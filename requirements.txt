@@ -5,3 +5,11 @@ scikit-learn>=1.5.0
 python-docx>=1.1.0
 requests>=2.31.0
 Werkzeug>=3.0.0
+fastapi
+uvicorn
+httpx
+pydantic
+python-dotenv
+sqlalchemy
+psycopg2-binary
+openai
