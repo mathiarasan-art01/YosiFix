@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Register — YosiFix{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="glass-card">
+      <h3 class="mb-4">{{ t('nav_register', lang) }}</h3>
+      <form method="POST">
+        <div class="mb-3">
+          <label class="form-label">Username</label>
+          <input type="text" name="username" class="form-control" required autofocus>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          <input type="password" name="password" class="form-control" minlength="6" required>
+          <small class="text-muted-custom">At least 6 characters.</small>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">{{ t('label_language', lang) }}</label>
+          <select name="language" class="form-select">
+            <option value="en">English</option>
+            <option value="ta">தமிழ் (Tamil)</option>
+            <option value="hi">हिन्दी (Hindi)</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-brand w-100">{{ t('nav_register', lang) }}</button>
+      </form>
+      <p class="text-center mt-3 mb-0">
+        <small>Already have an account? <a href="{{ url_for('auth.login') }}">{{ t('nav_login', lang) }}</a></small>
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

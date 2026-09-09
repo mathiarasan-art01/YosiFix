@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}History — {{ idea.title }}{% endblock %}
+{% block content %}
+<h2 class="mb-4">{{ t('nav_history', lang) }}: {{ idea.title }}</h2>
+
+<div class="glass-card">
+  <div class="timeline">
+    {% for v in versions|reverse %}
+    <div class="timeline-item">
+      <div class="d-flex justify-content-between">
+        <strong>Version {{ v.version_num }}</strong>
+        <small class="text-muted-custom">{{ v.created_at.strftime('%d %b %Y, %H:%M') }}</small>
+      </div>
+      {% if v.change_note %}<p class="small text-muted-custom mb-1">{{ v.change_note }}</p>{% endif %}
+      <p class="small mb-0">{{ v.raw_text[:200] }}{% if v.raw_text|length > 200 %}...{% endif %}</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<a href="{{ url_for('idea.result', idea_id=idea.id) }}" class="btn btn-outline-glass">
+  <i class="bi bi-arrow-left"></i> Back to latest analysis
+</a>
+{% endblock %}

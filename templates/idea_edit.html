@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Refine Idea — YosiFix{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="glass-card">
+      <h3 class="mb-1">{{ t('btn_edit_idea', lang) }}</h3>
+      <p class="text-muted-custom mb-4">Editing will create version {{ idea.current_version + 1 }} and re-run the full analysis.</p>
+      <form method="POST">
+        <div class="mb-3">
+          <label class="form-label">{{ t('label_idea_text', lang) }}</label>
+          <textarea name="idea_text" class="form-control" rows="6" required>{{ idea.raw_text }}</textarea>
+        </div>
+        <div class="mb-4">
+          <label class="form-label">What changed? (optional note)</label>
+          <input type="text" name="change_note" class="form-control" placeholder="e.g. Added offline mode to address connectivity gap">
+        </div>
+        <button type="submit" class="btn btn-brand btn-lg"><i class="bi bi-arrow-repeat"></i> Re-analyze</button>
+        <a href="{{ url_for('idea.result', idea_id=idea.id) }}" class="btn btn-outline-glass btn-lg ms-2">Cancel</a>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

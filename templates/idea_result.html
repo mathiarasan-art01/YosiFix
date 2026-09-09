@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}{{ idea.title }} — YosiFix{% endblock %}
+{% block content %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start mb-4 gap-3">
+  <div>
+    <h2 class="mb-1">{{ idea.title }}</h2>
+    <span class="badge badge-domain me-2">{{ idea.domain }} ({{ (idea.domain_confidence*100)|round|int }}% confidence)</span>
+    <span class="text-muted-custom">v{{ idea.current_version }} &middot; {{ idea.updated_at.strftime('%d %b %Y, %H:%M') }} &middot; engine: {{ analysis.engine_used }}</span>
+  </div>
+  <div class="score-badge" data-score="{{ idea.innovation_score }}">
+    <span class="score-value">{{ idea.innovation_score|round|int }}</span>
+  </div>
+</div>
+
+<div class="glass-card">
+  <h5 class="text-muted-custom">Problem Statement</h5>
+  <p class="idea-raw-text mb-0">{{ idea.raw_text }}</p>
+</div>
+
+<div class="d-flex flex-wrap gap-2 mb-4">
+  <a href="{{ url_for('idea.edit', idea_id=idea.id) }}" class="btn btn-outline-glass"><i class="bi bi-pencil-square"></i> {{ t('btn_edit_idea', lang) }}</a>
+  <a href="{{ url_for('idea.history', idea_id=idea.id) }}" class="btn btn-outline-glass"><i class="bi bi-clock-history"></i> {{ t('nav_history', lang) }}</a>
+  <a href="{{ url_for('idea.prompt_studio', idea_id=idea.id) }}" class="btn btn-brand"><i class="bi bi-magic"></i> {{ t('btn_generate_prompt', lang) }}</a>
+  <a href="{{ url_for('idea.export', idea_id=idea.id) }}" class="btn btn-outline-glass"><i class="bi bi-file-earmark-word"></i> {{ t('btn_export', lang) }}</a>
+</div>
+
+<!-- Similar Solutions -->
+<div class="glass-card">
+  <h4><i class="bi bi-search"></i> {{ t('label_similar_solutions', lang) }}</h4>
+  <p class="text-muted-custom">Overall similarity: <strong class="mono">{{ analysis.overall_similarity }}%</strong> — {{ analysis.similarity_verdict }}</p>
+  {% for m in analysis.similar_solutions %}
+  <div class="solution-card">
+    <div class="d-flex justify-content-between">
+      <strong>{{ m.name }}</strong>
+      <span class="similarity-pill">{{ m.similarity_score }}%</span>
+    </div>
+    <p class="text-muted-custom small mb-1">{{ m.description }}</p>
+    <p class="small mb-0">{{ m.reasoning }}</p>
+  </div>
+  {% else %}
+  <p class="text-muted-custom">No comparable solutions found in the knowledge base for this domain yet.</p>
+  {% endfor %}
+</div>
+
+<!-- Gap Analysis -->
+<div class="glass-card">
+  <h4><i class="bi bi-lightbulb"></i> {{ t('label_gap_analysis', lang) }}</h4>
+  <div class="row">
+    <div class="col-md-6">
+      <h6 class="text-muted-custom">{{ t('label_covered', lang) }}</h6>
+      {% if analysis.covered_features %}
+      <ul>{% for f in analysis.covered_features %}<li>{{ f }}</li>{% endfor %}</ul>
+      {% else %}<p class="text-muted-custom small">None detected yet.</p>{% endif %}
+    </div>
+    <div class="col-md-6">
+      <h6 class="text-muted-custom">{{ t('label_gaps', lang) }}</h6>
+      {% if analysis.gap_features %}
+      <ul>{% for g in analysis.gap_features %}<li>{{ g }}</li>{% endfor %}</ul>
+      {% else %}<p class="text-muted-custom small">No major gaps found — differentiate on execution.</p>{% endif %}
+    </div>
+  </div>
+  <hr class="border-secondary">
+  <h6 class="text-muted-custom">Opportunity Notes</h6>
+  {% for note in analysis.opportunity_notes %}
+  <p class="small mb-2"><i class="bi bi-arrow-right-short"></i> {{ note }}</p>
+  {% endfor %}
+</div>
+
+<!-- SDG Mapping -->
+<div class="glass-card">
+  <h4><i class="bi bi-globe-asia-australia"></i> {{ t('label_sdg', lang) }}</h4>
+  {% if analysis.sdg_mappings %}
+    {% for s in analysis.sdg_mappings %}
+    <span class="sdg-chip" title="{{ s.reasoning }}">SDG {{ s.sdg_number }}: {{ s.sdg_name }}</span>
+    {% endfor %}
+    <div class="mt-3">
+      {% for s in analysis.sdg_mappings %}
+      <p class="small text-muted-custom mb-1">{{ s.reasoning }}</p>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-muted-custom">No strong SDG alignment detected in the current phrasing — consider framing the impact angle explicitly.</p>
+  {% endif %}
+</div>
+
+<!-- Tech Stack + Architecture -->
+<div class="row">
+  <div class="col-lg-5">
+    <div class="glass-card h-100">
+      <h4><i class="bi bi-stack"></i> {{ t('label_tech_stack', lang) }}</h4>
+      <p class="mb-1"><strong>Frontend:</strong> {{ analysis.tech_stack.frontend }}</p>
+      <p class="mb-1"><strong>Backend:</strong> {{ analysis.tech_stack.backend }}</p>
+      <p class="mb-1"><strong>Database:</strong> {{ analysis.tech_stack.database }}</p>
+      {% if analysis.tech_stack.extra_tools %}
+      <p class="mb-1"><strong>Extras:</strong></p>
+      <ul>{% for extra in analysis.tech_stack.extra_tools %}<li class="small">{{ extra }}</li>{% endfor %}</ul>
+      {% endif %}
+      <hr class="border-secondary">
+      <p class="small text-muted-custom mb-0">
+        {% for r in analysis.tech_stack.reasoning %}{{ r }}<br>{% endfor %}
+      </p>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="glass-card h-100">
+      <h4><i class="bi bi-diagram-3"></i> {{ t('label_architecture', lang) }}</h4>
+      <div class="mermaid">
+{{ analysis.architecture_mermaid }}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Roadmap -->
+<div class="glass-card">
+  <h4><i class="bi bi-map"></i> {{ t('label_roadmap', lang) }}</h4>
+  <div class="row g-3">
+    <div class="col-md-4">
+      <div class="roadmap-col mvp">
+        <h6>{{ t('label_mvp', lang) }}</h6>
+        <ul class="mb-0">{% for item in analysis.roadmap.mvp %}<li class="small">{{ item }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="roadmap-col v2">
+        <h6>{{ t('label_v2', lang) }}</h6>
+        <ul class="mb-0">{% for item in analysis.roadmap.v2 %}<li class="small">{{ item }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="roadmap-col v3">
+        <h6>{{ t('label_v3', lang) }}</h6>
+        <ul class="mb-0">{% for item in analysis.roadmap.v3 %}<li class="small">{{ item }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "dark" });
+</script>
+{% endblock %}

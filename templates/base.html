@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="{{ lang|default('en') }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}YosiFix{% endblock %}</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg glass-nav sticky-top">
+  <div class="container">
+    <a class="navbar-brand brand-logo" href="{{ url_for('main.landing') }}">
+      <i class="bi bi-lightning-charge-fill"></i> YosiFix
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMain">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        {% if current_user.is_authenticated %}
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('main.dashboard') }}">{{ t('nav_dashboard', lang) }}</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('idea.new') }}">{{ t('nav_new_idea', lang) }}</a></li>
+        {% endif %}
+      </ul>
+      <ul class="navbar-nav align-items-lg-center">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+            <i class="bi bi-translate"></i> {{ lang|upper }}
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end glass-dropdown">
+            <li><a class="dropdown-item" href="{{ url_for('main.set_language', lang_code='en') }}">English</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('main.set_language', lang_code='ta') }}">தமிழ்</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('main.set_language', lang_code='hi') }}">हिन्दी</a></li>
+          </ul>
+        </li>
+        {% if current_user.is_authenticated %}
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('auth.logout') }}">{{ t('nav_logout', lang) }}</a></li>
+        {% else %}
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('auth.login') }}">{{ t('nav_login', lang) }}</a></li>
+        <li class="nav-item"><a class="btn btn-brand btn-sm ms-lg-2" href="{{ url_for('auth.register') }}">{{ t('nav_register', lang) }}</a></li>
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<main class="app-main">
+  <div class="container py-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'danger' if category == 'danger' else category }} glass-alert alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </div>
+</main>
+
+<footer class="app-footer text-center py-4">
+  <small>YosiFix &mdash; {{ t('tagline', lang) }}</small>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

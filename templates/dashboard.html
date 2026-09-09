@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — YosiFix{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>{{ t('nav_dashboard', lang) }}</h2>
+  <a href="{{ url_for('idea.new') }}" class="btn btn-brand"><i class="bi bi-plus-lg"></i> {{ t('nav_new_idea', lang) }}</a>
+</div>
+
+{% if not ideas %}
+<div class="glass-card text-center py-5">
+  <i class="bi bi-lightbulb fs-1 text-warning"></i>
+  <p class="mt-3 mb-4">{{ t('empty_dashboard', lang) }}</p>
+  <a href="{{ url_for('idea.new') }}" class="btn btn-brand">{{ t('nav_new_idea', lang) }}</a>
+</div>
+{% else %}
+<div class="row g-3">
+  {% for idea in ideas %}
+  <div class="col-md-6">
+    <a href="{{ url_for('idea.result', idea_id=idea.id) }}" class="text-decoration-none">
+      <div class="glass-card idea-list-item h-100">
+        <div class="d-flex justify-content-between align-items-start">
+          <h5 class="text-light mb-2">{{ idea.title }}</h5>
+          {% if idea.domain %}<span class="badge badge-domain">{{ idea.domain }}</span>{% endif %}
+        </div>
+        <p class="text-muted-custom small mb-2">{{ idea.raw_text[:120] }}{% if idea.raw_text|length > 120 %}...{% endif %}</p>
+        <div class="d-flex justify-content-between align-items-center">
+          <small class="text-muted-custom">v{{ idea.current_version }} &middot; {{ idea.created_at.strftime('%d %b %Y') }}</small>
+          {% if idea.innovation_score %}
+          <span class="similarity-pill">Score: {{ idea.innovation_score }}</span>
+          {% endif %}
+        </div>
+      </div>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

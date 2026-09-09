@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}YosiFix — Validate, Improve, Build{% endblock %}
+{% block content %}
+<div class="hero-section">
+  <h1 class="hero-title">Don't just have an idea.<br><span class="accent">Prove it. Fix it. Build it.</span></h1>
+  <p class="hero-sub">{{ t('welcome_message', lang) }} YosiFix checks what already exists, finds the gaps competitors miss, maps real-world impact, and hands you a ready-to-code blueprint.</p>
+  <a href="{{ url_for('auth.register') }}" class="btn btn-brand btn-lg px-4 me-2">Get Started Free</a>
+  <a href="{{ url_for('auth.login') }}" class="btn btn-outline-glass btn-lg px-4">Login</a>
+</div>
+
+<div class="row g-4 mt-3">
+  <div class="col-md-4">
+    <div class="glass-card h-100">
+      <i class="bi bi-search fs-2 text-info"></i>
+      <h4 class="mt-3">Existing Solution Discovery</h4>
+      <p class="text-muted-custom">Instantly see what's already out there, with a similarity score and plain-language reasoning — not just a list of links.</p>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="glass-card h-100">
+      <i class="bi bi-lightbulb fs-2 text-warning"></i>
+      <h4 class="mt-3">Gap &amp; Opportunity Engine</h4>
+      <p class="text-muted-custom">We surface exactly what competitors miss, so your differentiator isn't a guess — it's evidence-based.</p>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="glass-card h-100">
+      <i class="bi bi-magic fs-2 text-success"></i>
+      <h4 class="mt-3">AI Prompt Studio</h4>
+      <p class="text-muted-custom">Get a ready-to-paste master build prompt tuned for Claude, ChatGPT, Gemini, or Cursor — from validated idea to first commit in minutes.</p>
+    </div>
+  </div>
+</div>
+
+<div class="glass-card mt-4">
+  <h4>How it works</h4>
+  <ol class="mt-3">
+    <li class="mb-2">Describe your idea in a sentence or two, in English, Tamil, or Hindi.</li>
+    <li class="mb-2">YosiFix classifies the domain, finds similar existing solutions, and scores the overlap.</li>
+    <li class="mb-2">It surfaces gaps those solutions leave open, maps SDG relevance, and recommends a tech stack.</li>
+    <li class="mb-2">You get a phased MVP → v2 → v3 roadmap, an architecture diagram, and a ready-to-use AI coding prompt.</li>
+    <li>Export the whole thing as a Word blueprint whenever you're ready to pitch or build.</li>
+  </ol>
+</div>
+{% endblock %}
