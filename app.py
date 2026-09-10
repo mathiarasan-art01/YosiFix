@@ -9,8 +9,11 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    instance_dir = os.path.join(app.root_path, "instance")
-    os.makedirs(instance_dir, exist_ok=True)
+    try:
+        instance_dir = os.path.join(app.root_path, "instance")
+        os.makedirs(instance_dir, exist_ok=True)
+    except Exception:
+        pass
 
     db.init_app(app)
     login_manager.init_app(app)
