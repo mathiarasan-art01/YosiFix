@@ -628,12 +628,12 @@ label.form-label, label {
 
 @keyframes pulse-icon {
   0%, 100% { filter: drop-shadow(0 0 8px var(--accent-teal-glow)); }
-  50% { filter: drop-shadow(0 0 16px var(--accent-teal)); }
+  50% { filter: drop-shadow(0 0 18px var(--accent-teal)); }
 }
 
 @keyframes pulse-gauge {
   0% { box-shadow: 0 0 25px rgba(0, 245, 212, 0.3); }
-  100% { box-shadow: 0 0 45px rgba(0, 245, 212, 0.55); }
+  100% { box-shadow: 0 0 45px rgba(0, 245, 212, 0.65); }
 }
 
 @keyframes pulse-dot {
