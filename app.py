@@ -6,7 +6,14 @@ from modules.i18n import t as translate
 
 
 def create_app(config_class=Config):
-    app = Flask(__name__)
+    # Keep the asset and template roots explicit so the Python runtime resolves
+    # them correctly when deployed from Vercel's project root.
+    app = Flask(
+        __name__,
+        static_folder="static",
+        static_url_path="/static",
+        template_folder="templates",
+    )
     app.config.from_object(config_class)
 
     try:
