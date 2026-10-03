@@ -1,22 +1,17 @@
 from flask import (
     Blueprint, render_template, redirect, url_for, request, flash,
-    session, send_file, current_app, abort
+    session, send_file, current_app, abort, jsonify
 )
 from flask_login import login_required, current_user
 
 from extensions import db
 from models import Idea, IdeaVersion, AnalysisResult, PromptRecord
 from modules.i18n import t
-from modules.classifier import classify_idea
-from modules.similarity import analyze_similarity
-from modules.gap_analysis import detect_gaps, compute_innovation_score
-from modules.sdg_mapper import map_sdgs
-from modules.tech_recommender import recommend_stack
-from modules.architecture import generate_architecture_diagram
-from modules.roadmap import generate_roadmap
 from modules.prompt_studio import generate_master_prompt, TOOL_NOTES
 from modules.blueprint_export import build_blueprint_docx
-from modules.llm_client import LLMClient
+from services.analysis.orchestrator import AnalysisOrchestrator
+from services.analysis.context import AnalysisContext
+from services.groq.client import GroqClient
 
 bp = Blueprint("idea", __name__, url_prefix="/idea")
 
@@ -25,69 +20,10 @@ def current_lang():
     return session.get("lang", "en")
 
 
-def get_llm_client():
-    return LLMClient(
-        groq_api_key=current_app.config.get("GROQ_API_KEY", ""),
-        anthropic_api_key=current_app.config.get("ANTHROPIC_API_KEY", ""),
-    )
-
-
-def run_pipeline(idea_text, domain_hint=None):
-    """Runs the full analysis pipeline and returns a dict of results.
-    Never raises -- every stage has a deterministic rule-based path."""
-    llm = get_llm_client()
-
-    classification = classify_idea(idea_text, llm_client=llm)
-    domain = domain_hint or classification["domain"]
-
-    similarity = analyze_similarity(idea_text, domain)
-    gaps = detect_gaps(idea_text, similarity["matches"])
-    sdgs = map_sdgs(idea_text)
-    stack = recommend_stack(idea_text, domain)
-    architecture = generate_architecture_diagram(stack, domain)
-    roadmap = generate_roadmap(gaps["gap_features"], stack)
-    innovation_score = compute_innovation_score(
-        similarity["overall_similarity"], len(gaps["gap_features"]), len(sdgs)
-    )
-
-    return {
-        "classification": classification,
-        "domain": domain,
-        "similarity": similarity,
-        "gaps": gaps,
-        "sdgs": sdgs,
-        "stack": stack,
-        "architecture": architecture,
-        "roadmap": roadmap,
-        "innovation_score": innovation_score,
-        "engine": classification.get("engine", "rule-based"),
-    }
-
-
-def persist_analysis(idea, results):
-    analysis = idea.analysis
-    if analysis is None:
-        analysis = AnalysisResult(idea_id=idea.id)
-        db.session.add(analysis)
-
-    analysis.similar_solutions = results["similarity"]["matches"]
-    analysis.overall_similarity = results["similarity"]["overall_similarity"]
-    analysis.similarity_verdict = results["similarity"]["verdict"]
-    analysis.covered_features = results["gaps"]["covered_features"]
-    analysis.gap_features = results["gaps"]["gap_features"]
-    analysis.opportunity_notes = results["gaps"]["opportunity_notes"]
-    analysis.sdg_mappings = results["sdgs"]
-    analysis.tech_stack = results["stack"]
-    analysis.architecture_mermaid = results["architecture"]
-    analysis.roadmap = results["roadmap"]
-    analysis.engine_used = results["engine"]
-
-    idea.domain = results["domain"]
-    idea.domain_confidence = results["classification"]["confidence"]
-    idea.innovation_score = results["innovation_score"]
-
-    db.session.commit()
-    return analysis
+def get_orchestrator():
+    groq_key = current_app.config.get("GROQ_API_KEY", "")
+    client = GroqClient(api_key=groq_key)
+    return AnalysisOrchestrator(client=client)
 
 
 @bp.route("/new", methods=["GET", "POST"])
@@ -113,10 +49,15 @@ def new():
         db.session.add(version)
         db.session.commit()
 
-        results = run_pipeline(raw_text)
-        persist_analysis(idea, results)
+        # Run the full 15-stage unified analysis pipeline
+        orchestrator = get_orchestrator()
+        try:
+            orchestrator.run_full_analysis(idea)
+            flash("Evidence-backed analysis completed successfully.", "success")
+        except Exception as exc:
+            current_app.logger.exception(f"Pipeline error for idea {idea.id}: {exc}")
+            flash(f"Analysis completed with baseline evaluation: {exc}", "warning")
 
-        flash("Analysis complete.", "success")
         return redirect(url_for("idea.result", idea_id=idea.id))
 
     return render_template("idea_new.html", lang=current_lang(), t=t)
@@ -127,10 +68,60 @@ def new():
 def result(idea_id):
     idea = Idea.query.filter_by(id=idea_id, user_id=current_user.id).first_or_404()
     analysis = idea.analysis
-    if analysis is None:
-        results = run_pipeline(idea.raw_text)
-        analysis = persist_analysis(idea, results)
-    return render_template("idea_result.html", idea=idea, analysis=analysis, lang=current_lang(), t=t)
+    
+    # If analysis is missing or not yet upgraded to extended pipeline, run full analysis
+    if analysis is None or not analysis.evidence or not analysis.novelty:
+        orchestrator = get_orchestrator()
+        orchestrator.run_full_analysis(idea)
+        analysis = idea.analysis
+
+    ctx = AnalysisContext.from_db(idea).to_dict()
+    return render_template(
+        "idea_result.html",
+        idea=idea,
+        analysis=analysis,
+        ctx=ctx,
+        lang=current_lang(),
+        t=t,
+    )
+
+
+@bp.route("/<int:idea_id>/mutate", methods=["POST"])
+@login_required
+def mutate(idea_id):
+    """User selects an architectural mutation."""
+    idea = Idea.query.filter_by(id=idea_id, user_id=current_user.id).first_or_404()
+    mutation_id = request.form.get("mutation_id", "").strip()
+
+    if not mutation_id:
+        flash("No mutation selected.", "warning")
+        return redirect(url_for("idea.result", idea_id=idea.id))
+
+    orchestrator = get_orchestrator()
+    try:
+        orchestrator.apply_mutation(idea, mutation_id)
+        flash(f"Strategic pivot '{mutation_id}' applied. Architecture, roadmap, and defense updated!", "success")
+    except Exception as exc:
+        current_app.logger.exception(f"Failed to apply mutation {mutation_id}: {exc}")
+        flash(f"Failed to apply mutation: {exc}", "danger")
+
+    return redirect(url_for("idea.result", idea_id=idea.id))
+
+
+@bp.route("/<int:idea_id>/judge-defense", methods=["POST"])
+@login_required
+def judge_defense(idea_id):
+    """Evaluate user defense response via AJAX."""
+    idea = Idea.query.filter_by(id=idea_id, user_id=current_user.id).first_or_404()
+    question = request.form.get("question") or request.json.get("question", "")
+    user_answer = request.form.get("answer") or request.json.get("answer", "")
+
+    if not question or not user_answer:
+        return jsonify({"error": "Question and answer are required"}), 400
+
+    orchestrator = get_orchestrator()
+    feedback = orchestrator.evaluate_judge_response(idea, question, user_answer)
+    return jsonify({"status": "success", "feedback": feedback})
 
 
 @bp.route("/<int:idea_id>/edit", methods=["GET", "POST"])
@@ -157,10 +148,10 @@ def edit(idea_id):
         db.session.add(version)
         db.session.commit()
 
-        results = run_pipeline(new_text)
-        persist_analysis(idea, results)
+        orchestrator = get_orchestrator()
+        orchestrator.run_full_analysis(idea)
 
-        flash("Idea refined and re-analyzed.", "success")
+        flash("Idea refined and re-analyzed across all 15 stages.", "success")
         return redirect(url_for("idea.result", idea_id=idea.id))
 
     return render_template("idea_edit.html", idea=idea, lang=current_lang(), t=t)

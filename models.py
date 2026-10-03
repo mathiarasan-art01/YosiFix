@@ -83,6 +83,25 @@ class AnalysisResult(db.Model):
     roadmap = db.Column(db.JSON, default=dict)
 
     engine_used = db.Column(db.String(20), default="rule-based")
+    
+    # Extended pipeline columns
+    normalized_idea = db.Column(db.Text, default="")
+    problem = db.Column(db.Text, default="")
+    target_users = db.Column(db.JSON, default=list)
+    keywords = db.Column(db.JSON, default=list)
+    landscape = db.Column(db.JSON, default=dict)
+    evidence = db.Column(db.JSON, default=dict)
+    novelty = db.Column(db.JSON, default=dict)
+    mutations = db.Column(db.JSON, default=list)
+    selected_mutation_id = db.Column(db.String(100), default="")
+    selected_mutation_detail = db.Column(db.JSON, default=dict)
+    reality_check = db.Column(db.JSON, default=dict)
+    failures = db.Column(db.JSON, default=dict)
+    judge_attack = db.Column(db.JSON, default=dict)
+    blueprint = db.Column(db.JSON, default=dict)
+    completed_stages = db.Column(db.JSON, default=list)
+    current_stage = db.Column(db.String(50), default="initialized")
+
     created_at = db.Column(db.DateTime, default=utcnow)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 

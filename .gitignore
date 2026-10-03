@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Vercel deployment artifacts
 .vercel/
 
@@ -25,7 +24,7 @@ yarn-error.log*
 .idea/
 *.swp
 *.swo
-=======
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -244,4 +243,3 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
->>>>>>> eac4104dca7632b6d4fbed77426cf5a430923d35

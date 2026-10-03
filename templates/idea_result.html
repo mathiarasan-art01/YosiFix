@@ -1,140 +1,475 @@
 {% extends "base.html" %}
-{% block title %}{{ idea.title }} — YosiFix{% endblock %}
+{% block title %}{{ idea.title }} — YosiFix Defense & Blueprint{% endblock %}
 {% block content %}
 
+<!-- Header & Scores -->
 <div class="d-flex flex-wrap justify-content-between align-items-start mb-4 gap-3">
   <div>
-    <h2 class="mb-1">{{ idea.title }}</h2>
-    <span class="badge badge-domain me-2">{{ idea.domain }} ({{ (idea.domain_confidence*100)|round|int }}% confidence)</span>
-    <span class="text-muted-custom">v{{ idea.current_version }} &middot; {{ idea.updated_at.strftime('%d %b %Y, %H:%M') }} &middot; engine: {{ analysis.engine_used }}</span>
+    <div class="d-flex align-items-center gap-2 mb-1">
+      <h2 class="mb-0">{{ idea.title }}</h2>
+      <span class="badge bg-primary text-white">{{ idea.domain }}</span>
+    </div>
+    <div class="text-muted small">
+      <span>Version {{ idea.current_version }}</span> &middot;
+      <span>Updated {{ idea.updated_at.strftime('%d %b %Y, %H:%M') }}</span> &middot;
+      <span class="badge bg-secondary-subtle text-dark border">Engine: {{ analysis.engine_used or 'groq' }}</span>
+    </div>
   </div>
-  <div class="score-badge" data-score="{{ idea.innovation_score }}">
-    <span class="score-value">{{ idea.innovation_score|round|int }}</span>
+
+  <div class="d-flex gap-3 align-items-center">
+    <!-- Novelty Score -->
+    <div class="glass-card text-center p-3 mb-0" style="min-width: 130px;">
+      <div class="text-muted small text-uppercase fw-bold">Novelty</div>
+      <div class="fs-2 fw-bold text-primary">{{ ctx.novelty.novelty_score|default(idea.innovation_score)|round|int }}%</div>
+      <div class="badge bg-info-subtle text-info-emphasis border small">{{ ctx.novelty.novelty_tier|default('Evaluated') }}</div>
+    </div>
+    <!-- Buildability Score -->
+    <div class="glass-card text-center p-3 mb-0" style="min-width: 130px;">
+      <div class="text-muted small text-uppercase fw-bold">Buildability</div>
+      <div class="fs-2 fw-bold text-success">{{ ctx.reality_check.buildability_score|default(78)|round|int }}%</div>
+      <div class="badge bg-success-subtle text-success-emphasis border small">{{ ctx.reality_check.feasibility_rating|default('Feasible') }}</div>
+    </div>
   </div>
 </div>
 
-<div class="glass-card">
-  <h5 class="text-muted-custom">Problem Statement</h5>
-  <p class="idea-raw-text mb-0">{{ idea.raw_text }}</p>
-</div>
-
+<!-- Quick Action Toolbar -->
 <div class="d-flex flex-wrap gap-2 mb-4">
-  <a href="{{ url_for('idea.edit', idea_id=idea.id) }}" class="btn btn-outline-glass"><i class="bi bi-pencil-square"></i> {{ t('btn_edit_idea', lang) }}</a>
-  <a href="{{ url_for('idea.history', idea_id=idea.id) }}" class="btn btn-outline-glass"><i class="bi bi-clock-history"></i> {{ t('nav_history', lang) }}</a>
-  <a href="{{ url_for('idea.prompt_studio', idea_id=idea.id) }}" class="btn btn-brand"><i class="bi bi-magic"></i> {{ t('btn_generate_prompt', lang) }}</a>
-  <a href="{{ url_for('idea.export', idea_id=idea.id) }}" class="btn btn-outline-glass"><i class="bi bi-file-earmark-word"></i> {{ t('btn_export', lang) }}</a>
+  <a href="{{ url_for('idea.edit', idea_id=idea.id) }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-pencil-square"></i> Refine Idea</a>
+  <a href="{{ url_for('idea.history', idea_id=idea.id) }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-clock-history"></i> Version History</a>
+  <a href="{{ url_for('idea.prompt_studio', idea_id=idea.id) }}" class="btn btn-primary btn-sm"><i class="bi bi-magic"></i> AI Prompt Studio</a>
+  <a href="{{ url_for('idea.export', idea_id=idea.id) }}" class="btn btn-success btn-sm"><i class="bi bi-file-earmark-word"></i> Export Word Blueprint</a>
 </div>
 
-<!-- Similar Solutions -->
-<div class="glass-card">
-  <h4><i class="bi bi-search"></i> {{ t('label_similar_solutions', lang) }}</h4>
-  <p class="text-muted-custom">Overall similarity: <strong class="mono">{{ analysis.overall_similarity }}%</strong> — {{ analysis.similarity_verdict }}</p>
-  {% for m in analysis.similar_solutions %}
-  <div class="solution-card">
-    <div class="d-flex justify-content-between">
-      <strong>{{ m.name }}</strong>
-      <span class="similarity-pill">{{ m.similarity_score }}%</span>
-    </div>
-    <p class="text-muted-custom small mb-1">{{ m.description }}</p>
-    <p class="small mb-0">{{ m.reasoning }}</p>
+<!-- Selected Pivot Alert (if applicable) -->
+{% if ctx.selected_mutation_detail and ctx.selected_mutation_detail.title %}
+<div class="alert alert-primary d-flex align-items-center justify-content-between p-3 mb-4 rounded-3 shadow-sm border-primary">
+  <div>
+    <strong><i class="bi bi-shuffle"></i> Active Strategic Pivot:</strong>
+    <span class="fw-semibold">{{ ctx.selected_mutation_detail.title }}</span>
+    <p class="small mb-0 text-muted">{{ ctx.selected_mutation_detail.rationale }}</p>
   </div>
-  {% else %}
-  <p class="text-muted-custom">No comparable solutions found in the knowledge base for this domain yet.</p>
-  {% endfor %}
+  <a href="#mutations-section" class="btn btn-sm btn-outline-primary">Change Pivot</a>
 </div>
+{% endif %}
 
-<!-- Gap Analysis -->
-<div class="glass-card">
-  <h4><i class="bi bi-lightbulb"></i> {{ t('label_gap_analysis', lang) }}</h4>
-  <div class="row">
-    <div class="col-md-6">
-      <h6 class="text-muted-custom">{{ t('label_covered', lang) }}</h6>
-      {% if analysis.covered_features %}
-      <ul>{% for f in analysis.covered_features %}<li>{{ f }}</li>{% endfor %}</ul>
-      {% else %}<p class="text-muted-custom small">None detected yet.</p>{% endif %}
+<!-- Navigation Tabs -->
+<ul class="nav nav-pills mb-4 gap-2" id="analysisTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="evidence-tab" data-bs-toggle="pill" data-bs-target="#tab-evidence" type="button" role="tab">
+      <i class="bi bi-patch-check"></i> Evidence Board
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="market-tab" data-bs-toggle="pill" data-bs-target="#tab-market" type="button" role="tab">
+      <i class="bi bi-search"></i> Market & Gaps
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="mutations-tab" data-bs-toggle="pill" data-bs-target="#tab-mutations" type="button" role="tab">
+      <i class="bi bi-lightning-charge"></i> Mutation Engine
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="reality-tab" data-bs-toggle="pill" data-bs-target="#tab-reality" type="button" role="tab">
+      <i class="bi bi-shield-check"></i> Reality & Failures
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tech-tab" data-bs-toggle="pill" data-bs-target="#tab-tech" type="button" role="tab">
+      <i class="bi bi-diagram-3"></i> Architecture & Stack
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="judge-tab" data-bs-toggle="pill" data-bs-target="#tab-judge" type="button" role="tab">
+      <i class="bi bi-trophy"></i> Judge Attack & Defense
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="blueprint-tab" data-bs-toggle="pill" data-bs-target="#tab-blueprint" type="button" role="tab">
+      <i class="bi bi-journal-richtext"></i> Master Blueprint
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content" id="analysisTabsContent">
+
+  <!-- TAB 1: EVIDENCE BOARD -->
+  <div class="tab-pane fade show active" id="tab-evidence" role="tabpanel">
+    <div class="glass-card mb-4">
+      <h5 class="text-primary mb-2"><i class="bi bi-card-text"></i> Normalized Problem Statement</h5>
+      <p class="fs-6 mb-2">{{ ctx.problem or idea.raw_text }}</p>
+      {% if ctx.target_users %}
+      <div class="d-flex flex-wrap gap-2 mt-2">
+        <span class="text-muted small">Target Users:</span>
+        {% for u in ctx.target_users %}
+        <span class="badge bg-light text-dark border">{{ u }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
-    <div class="col-md-6">
-      <h6 class="text-muted-custom">{{ t('label_gaps', lang) }}</h6>
-      {% if analysis.gap_features %}
-      <ul>{% for g in analysis.gap_features %}<li>{{ g }}</li>{% endfor %}</ul>
-      {% else %}<p class="text-muted-custom small">No major gaps found — differentiate on execution.</p>{% endif %}
+
+    <div class="glass-card mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="bi bi-patch-check text-success"></i> Empirical Evidence Board</h4>
+        <span class="badge bg-success-subtle text-success border">Proof, Not AI Opinion</span>
+      </div>
+      <p class="text-muted small">{{ ctx.evidence.validation_summary or 'Claims cross-referenced against empirical industry reports and domain benchmarks.' }}</p>
+
+      <div class="table-responsive mt-3">
+        <table class="table table-hover align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Project Claim</th>
+              <th>Status</th>
+              <th>Factual Evidence</th>
+              <th>Source / Benchmark</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in ctx.evidence.claims %}
+            <tr>
+              <td class="fw-semibold">{{ c.claim }}</td>
+              <td>
+                {% if c.verification_status == 'verified' %}
+                  <span class="badge bg-success"><i class="bi bi-check2"></i> Verified</span>
+                {% elif c.verification_status == 'disputed' %}
+                  <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Disputed</span>
+                {% else %}
+                  <span class="badge bg-warning text-dark"><i class="bi bi-question-circle"></i> Unverified</span>
+                {% endif %}
+              </td>
+              <td class="small">{{ c.factual_evidence }}</td>
+              <td class="small text-muted"><i class="bi bi-link-45deg"></i> {{ c.source_reference }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4" class="text-center text-muted">Evidence claims being verified...</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if ctx.evidence.unverified_assumptions %}
+      <div class="mt-4 p-3 bg-light rounded-3 border">
+        <h6 class="text-danger mb-2"><i class="bi bi-exclamation-triangle"></i> Risky Assumptions to Validate in the Field:</h6>
+        <ul class="mb-0 small">
+          {% for a in ctx.evidence.unverified_assumptions %}
+          <li>{{ a }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
     </div>
   </div>
-  <hr class="border-secondary">
-  <h6 class="text-muted-custom">Opportunity Notes</h6>
-  {% for note in analysis.opportunity_notes %}
-  <p class="small mb-2"><i class="bi bi-arrow-right-short"></i> {{ note }}</p>
-  {% endfor %}
-</div>
 
-<!-- SDG Mapping -->
-<div class="glass-card">
-  <h4><i class="bi bi-globe-asia-australia"></i> {{ t('label_sdg', lang) }}</h4>
-  {% if analysis.sdg_mappings %}
-    {% for s in analysis.sdg_mappings %}
-    <span class="sdg-chip" title="{{ s.reasoning }}">SDG {{ s.sdg_number }}: {{ s.sdg_name }}</span>
-    {% endfor %}
-    <div class="mt-3">
-      {% for s in analysis.sdg_mappings %}
-      <p class="small text-muted-custom mb-1">{{ s.reasoning }}</p>
+  <!-- TAB 2: MARKET, SIMILARITY & GAPS -->
+  <div class="tab-pane fade" id="tab-market" role="tabpanel">
+    <!-- Novelty Breakdown -->
+    <div class="glass-card mb-4">
+      <h4><i class="bi bi-stars text-warning"></i> Novelty Assessment</h4>
+      <p class="text-muted small">{{ ctx.novelty.novelty_rationale or 'Novelty scored against existing solutions and market white spaces.' }}</p>
+      
+      <div class="row g-3 mb-3">
+        {% for prop in ctx.novelty.unique_value_props %}
+        <div class="col-md-4">
+          <div class="p-3 border rounded-3 bg-light h-100">
+            <div class="text-primary fw-semibold small mb-1"><i class="bi bi-check-circle"></i> Differentiator #{{ loop.index }}</div>
+            <div class="small">{{ prop }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Similar Solutions -->
+    <div class="glass-card mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4><i class="bi bi-binoculars"></i> Solution Landscape & Competitor Overlap</h4>
+        <span class="badge bg-secondary">Overall Similarity: {{ analysis.overall_similarity }}%</span>
+      </div>
+      <p class="text-muted small">{{ analysis.similarity_verdict }}</p>
+
+      {% for m in analysis.similar_solutions %}
+      <div class="p-3 mb-2 border rounded-3 bg-light">
+        <div class="d-flex justify-content-between">
+          <strong class="text-primary">{{ m.name or m.feature }}</strong>
+          <span class="badge bg-info-subtle text-info-emphasis">{{ m.similarity_score or m.overlap_percentage }}% Overlap</span>
+        </div>
+        <p class="small text-muted mb-1">{{ m.description or m.matched_with }}</p>
+        <p class="small mb-0 text-dark">{{ m.reasoning or m.differentiation_notes }}</p>
+      </div>
       {% endfor %}
     </div>
-  {% else %}
-    <p class="text-muted-custom">No strong SDG alignment detected in the current phrasing — consider framing the impact angle explicitly.</p>
-  {% endif %}
-</div>
 
-<!-- Tech Stack + Architecture -->
-<div class="row">
-  <div class="col-lg-5">
-    <div class="glass-card h-100">
-      <h4><i class="bi bi-stack"></i> {{ t('label_tech_stack', lang) }}</h4>
-      <p class="mb-1"><strong>Frontend:</strong> {{ analysis.tech_stack.frontend }}</p>
-      <p class="mb-1"><strong>Backend:</strong> {{ analysis.tech_stack.backend }}</p>
-      <p class="mb-1"><strong>Database:</strong> {{ analysis.tech_stack.database }}</p>
-      {% if analysis.tech_stack.extra_tools %}
-      <p class="mb-1"><strong>Extras:</strong></p>
-      <ul>{% for extra in analysis.tech_stack.extra_tools %}<li class="small">{{ extra }}</li>{% endfor %}</ul>
-      {% endif %}
-      <hr class="border-secondary">
-      <p class="small text-muted-custom mb-0">
-        {% for r in analysis.tech_stack.reasoning %}{{ r }}<br>{% endfor %}
-      </p>
-    </div>
-  </div>
-  <div class="col-lg-7">
-    <div class="glass-card h-100">
-      <h4><i class="bi bi-diagram-3"></i> {{ t('label_architecture', lang) }}</h4>
-      <div class="mermaid">
-{{ analysis.architecture_mermaid }}
+    <!-- Research & Market Gaps -->
+    <div class="glass-card mb-4">
+      <h4><i class="bi bi-bullseye text-danger"></i> White Spaces & Unmet Needs</h4>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <h6 class="text-muted">Unmet Customer Needs</h6>
+          <ul>
+            {% for need in ctx.gaps.unmet_needs or analysis.gap_features %}
+            <li class="small mb-1">{{ need }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div class="col-md-6">
+          <h6 class="text-muted">Technical White Spaces</h6>
+          <ul>
+            {% for ws in ctx.gaps.technical_white_spaces %}
+            <li class="small mb-1">{{ ws }}</li>
+            {% endfor %}
+          </ul>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Roadmap -->
-<div class="glass-card">
-  <h4><i class="bi bi-map"></i> {{ t('label_roadmap', lang) }}</h4>
-  <div class="row g-3">
-    <div class="col-md-4">
-      <div class="roadmap-col mvp">
-        <h6>{{ t('label_mvp', lang) }}</h6>
-        <ul class="mb-0">{% for item in analysis.roadmap.mvp %}<li class="small">{{ item }}</li>{% endfor %}</ul>
+  <!-- TAB 3: MUTATION ENGINE -->
+  <div class="tab-pane fade" id="tab-mutations" role="tabpanel">
+    <div class="glass-card mb-4" id="mutations-section">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <h4><i class="bi bi-shuffle text-primary"></i> Strategic Mutation Engine</h4>
+          <p class="text-muted small mb-0">Transform your project from an easily imitated idea into an exceptional, defensible solution.</p>
+        </div>
+        <span class="badge bg-primary-subtle text-primary border">Interactive Direction Selector</span>
       </div>
-    </div>
-    <div class="col-md-4">
-      <div class="roadmap-col v2">
-        <h6>{{ t('label_v2', lang) }}</h6>
-        <ul class="mb-0">{% for item in analysis.roadmap.v2 %}<li class="small">{{ item }}</li>{% endfor %}</ul>
-      </div>
-    </div>
-    <div class="col-md-4">
-      <div class="roadmap-col v3">
-        <h6>{{ t('label_v3', lang) }}</h6>
-        <ul class="mb-0">{% for item in analysis.roadmap.v3 %}<li class="small">{{ item }}</li>{% endfor %}</ul>
+
+      <div class="row g-3">
+        {% for mut in ctx.mutations %}
+        <div class="col-lg-4">
+          <div class="p-3 border rounded-3 h-100 d-flex flex-column justify-content-between {% if mut.id == ctx.selected_mutation_id or mut.selected %}border-primary bg-primary-subtle bg-opacity-25 shadow-sm{% else %}bg-light{% endif %}">
+            <div>
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="badge bg-secondary text-uppercase small">{{ mut.mutation_type }}</span>
+                {% if mut.id == ctx.selected_mutation_id or mut.selected %}
+                <span class="badge bg-primary"><i class="bi bi-check-lg"></i> Active Pivot</span>
+                {% endif %}
+              </div>
+              <h5 class="fw-bold mb-2">{{ mut.title }}</h5>
+              <p class="small text-muted mb-3">{{ mut.rationale }}</p>
+
+              <h6 class="small fw-bold text-dark mb-1">Key Modifications:</h6>
+              <ul class="small mb-3 ps-3">
+                {% for mod in mut.key_modifications %}
+                <li>{{ mod }}</li>
+                {% endfor %}
+              </ul>
+              <div class="p-2 rounded bg-white border small text-muted mb-3">
+                <strong>Defensibility:</strong> {{ mut.impact_on_novelty }}
+              </div>
+            </div>
+
+            <form action="{{ url_for('idea.mutate', idea_id=idea.id) }}" method="POST">
+              <input type="hidden" name="mutation_id" value="{{ mut.id }}">
+              {% if mut.id == ctx.selected_mutation_id or mut.selected %}
+              <button type="button" class="btn btn-sm btn-primary w-100" disabled><i class="bi bi-check2-circle"></i> Selected</button>
+              {% else %}
+              <button type="submit" class="btn btn-sm btn-outline-primary w-100"><i class="bi bi-arrow-repeat"></i> Apply This Pivot</button>
+              {% endif %}
+            </form>
+          </div>
+        </div>
+        {% endfor %}
       </div>
     </div>
   </div>
+
+  <!-- TAB 4: REALITY CHECK & FAILURE SIMULATION -->
+  <div class="tab-pane fade" id="tab-reality" role="tabpanel">
+    <div class="row g-4 mb-4">
+      <div class="col-lg-6">
+        <div class="glass-card h-100">
+          <h4><i class="bi bi-tools text-primary"></i> Reality Check & Feasibility</h4>
+          <p class="text-muted small">Estimated MVP Development Timeline: <strong>{{ ctx.reality_check.mvp_complexity_weeks|default(4) }} weeks</strong></p>
+
+          <h6 class="text-muted small text-uppercase fw-bold mt-3">Technical Prerequisites:</h6>
+          <ul class="small">
+            {% for item in ctx.reality_check.technical_prerequisites %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+
+          <h6 class="text-muted small text-uppercase fw-bold mt-3">Data & Hardware Requirements:</h6>
+          <ul class="small">
+            {% for item in ctx.reality_check.data_prerequisites %}
+            <li>{{ item }}</li>
+            {% endfor %}
+            {% for item in ctx.reality_check.hardware_prerequisites %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+
+          <h6 class="text-muted small text-uppercase fw-bold mt-3">Regulatory & Compliance Risks:</h6>
+          <ul class="small text-danger">
+            {% for item in ctx.reality_check.regulatory_or_ethical_risks %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="glass-card h-100">
+          <h4><i class="bi bi-exclamation-octagon text-danger"></i> Failure Mode Simulation</h4>
+          <div class="alert alert-danger small p-2 mb-3">
+            <strong>Critical Kill Factor:</strong> {{ ctx.failures.kill_factor or 'Systemic latency or adoption inertia.' }}
+          </div>
+
+          {% for fail in ctx.failures.failure_modes %}
+          <div class="p-2 mb-2 border rounded-3 bg-light">
+            <div class="d-flex justify-content-between">
+              <strong class="text-danger small">{{ fail.scenario_title }}</strong>
+              <span class="badge bg-danger-subtle text-danger">{{ fail.probability }} Prob / {{ fail.impact }} Impact</span>
+            </div>
+            <p class="small text-muted mb-1"><strong>Trigger:</strong> {{ fail.trigger }}</p>
+            <p class="small mb-0 text-success"><strong>Mitigation:</strong> {{ fail.mitigation_strategy }}</p>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 5: ARCHITECTURE & TECH STACK -->
+  <div class="tab-pane fade" id="tab-tech" role="tabpanel">
+    <div class="row g-4">
+      <div class="col-lg-5">
+        <div class="glass-card h-100">
+          <h4><i class="bi bi-stack"></i> Production Tech Stack</h4>
+          <p class="text-muted small">Architecture Pattern: <strong>{{ ctx.technology.architecture_pattern or 'Modular Service Architecture' }}</strong></p>
+
+          <table class="table table-sm mt-3">
+            <tbody>
+              {% for k, v in ctx.technology.recommended_stack.items() %}
+              <tr>
+                <td class="fw-semibold text-capitalize text-muted">{{ k }}</td>
+                <td>{{ v }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td class="fw-semibold text-muted">Frontend</td>
+                <td>{{ analysis.tech_stack.frontend }}</td>
+              </tr>
+              <tr>
+                <td class="fw-semibold text-muted">Backend</td>
+                <td>{{ analysis.tech_stack.backend }}</td>
+              </tr>
+              <tr>
+                <td class="fw-semibold text-muted">Database</td>
+                <td>{{ analysis.tech_stack.database }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          {% if ctx.technology.trade_offs %}
+          <h6 class="text-muted small text-uppercase fw-bold mt-4">Engineering Trade-Offs:</h6>
+          {% for to in ctx.technology.trade_offs %}
+          <div class="p-2 mb-2 border rounded bg-light small">
+            <div><strong>{{ to.layer }}:</strong> Selected <code>{{ to.selected_tech }}</code> over <code>{{ to.alternative_considered }}</code></div>
+            <div class="text-muted">{{ to.reason_selected }}</div>
+          </div>
+          {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="col-lg-7">
+        <div class="glass-card h-100">
+          <h4><i class="bi bi-diagram-3"></i> Component Architecture</h4>
+          <div class="mermaid p-3 bg-white border rounded-3 text-center my-3">
+{{ analysis.architecture_mermaid or ctx.architecture.mermaid_diagram }}
+          </div>
+          <p class="small text-muted mb-0"><strong>Data Flow:</strong> {{ ctx.architecture.data_flow_description }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 6: JUDGE ATTACK & DEFENSE SIMULATOR -->
+  <div class="tab-pane fade" id="tab-judge" role="tabpanel">
+    <div class="glass-card mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="bi bi-trophy text-warning"></i> Judge Attack & Defense Simulator</h4>
+        <span class="badge bg-warning-subtle text-dark border">Pitch Preparation</span>
+      </div>
+      <p class="text-muted small">{{ ctx.judge_attack.overall_pitch_defense_tip or 'Anticipate toughest investor and judge critiques.' }}</p>
+
+      {% for q in ctx.judge_attack.questions %}
+      <div class="p-3 mb-3 border rounded-3 bg-light">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <span class="badge bg-danger small">{{ q.category }} Scrutiny</span>
+          <span class="text-muted small">Question {{ q.id }}</span>
+        </div>
+        <h5 class="fw-bold mb-2">{{ q.question }}</h5>
+        <div class="p-2 mb-2 rounded bg-white border small text-muted">
+          <strong>Why Judges Ask:</strong> {{ q.why_judges_ask }}
+        </div>
+        <div class="p-2 mb-3 rounded bg-success-subtle border-success small">
+          <strong>Winning Defense Strategy:</strong> {{ q.model_defense_strategy }}
+        </div>
+
+        <!-- Interactive Practice Box -->
+        <div class="mt-2">
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#practice-{{ q.id }}">
+            <i class="bi bi-mic"></i> Practice Your Defense to {{ q.id }}
+          </button>
+          <div class="collapse mt-2" id="practice-{{ q.id }}">
+            <div class="card card-body bg-white border">
+              <label class="form-label small fw-semibold">Your Pitch Rebuttal:</label>
+              <textarea class="form-control form-control-sm mb-2" id="answer-input-{{ q.id }}" rows="2" placeholder="Explain your defensibility and cite your architectural mitigations..."></textarea>
+              <button class="btn btn-sm btn-primary align-self-start" onclick="evaluateDefense('{{ q.id }}', '{{ q.question|replace("'", "\\'") }}')">
+                <i class="bi bi-send-check"></i> Evaluate My Defense
+              </button>
+              <div id="feedback-{{ q.id }}" class="mt-2 d-none"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- TAB 7: MASTER BLUEPRINT -->
+  <div class="tab-pane fade" id="tab-blueprint" role="tabpanel">
+    <div class="glass-card mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="bi bi-journal-richtext text-primary"></i> Master Project Blueprint</h4>
+        <a href="{{ url_for('idea.export', idea_id=idea.id) }}" class="btn btn-sm btn-success">
+          <i class="bi bi-download"></i> Download Full Word Doc (.docx)
+        </a>
+      </div>
+
+      <div class="p-3 mb-3 bg-light border rounded-3">
+        <h6 class="text-muted small text-uppercase fw-bold">30-Second Elevator Pitch:</h6>
+        <p class="fs-6 fst-italic mb-0 text-primary">"{{ ctx.blueprint.elevator_pitch or 'Our solution solves critical domain inefficiencies through resilient edge intelligence.' }}"</p>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <div class="p-3 border rounded-3 bg-white h-100">
+            <h6 class="fw-bold">Executive Summary</h6>
+            <p class="small text-muted">{{ ctx.blueprint.executive_summary }}</p>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="p-3 border rounded-3 bg-white h-100">
+            <h6 class="fw-bold">Execution Strategy</h6>
+            <p class="small text-muted">{{ ctx.blueprint.execution_strategy }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-3 bg-white border rounded-3">
+        <h6 class="fw-bold">Judge Defense Summary</h6>
+        <p class="small text-muted mb-0">{{ ctx.blueprint.judge_defense_summary }}</p>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 {% endblock %}
@@ -142,6 +477,45 @@
 {% block scripts %}
 <script type="module">
   import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
-  mermaid.initialize({ startOnLoad: true, theme: "dark" });
+  mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+</script>
+<script>
+function evaluateDefense(qid, question) {
+  const answer = document.getElementById('answer-input-' + qid).value;
+  const feedbackDiv = document.getElementById('feedback-' + qid);
+  if (!answer.trim()) {
+    alert("Please write your defense answer first.");
+    return;
+  }
+  feedbackDiv.innerHTML = '<span class="spinner-border spinner-border-sm text-primary"></span> Evaluating defense...';
+  feedbackDiv.classList.remove('d-none');
+
+  fetch("{{ url_for('idea.judge_defense', idea_id=idea.id) }}", {
+    method: "POST",
+    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+    body: new URLSearchParams({question: question, answer: answer})
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.status === 'success') {
+      const fb = data.feedback;
+      feedbackDiv.innerHTML = `
+        <div class="alert alert-info small mb-0 mt-2">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <strong>Verdict: ${fb.verdict}</strong>
+            <span class="badge bg-primary">${fb.score}/100</span>
+          </div>
+          <p class="mb-1"><strong>Critique:</strong> ${fb.critique}</p>
+          <p class="mb-0"><strong>Upgraded Rebuttal:</strong> <em>"${fb.upgraded_rebuttal}"</em></p>
+        </div>
+      `;
+    } else {
+      feedbackDiv.innerHTML = `<div class="text-danger small mt-1">${data.error || 'Evaluation failed'}</div>`;
+    }
+  })
+  .catch(err => {
+    feedbackDiv.innerHTML = `<div class="text-danger small mt-1">Error evaluating defense.</div>`;
+  });
+}
 </script>
 {% endblock %}

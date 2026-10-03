@@ -34,10 +34,12 @@ def create_app(config_class=Config):
     from routes.main import bp as main_bp
     from routes.auth import bp as auth_bp
     from routes.idea import bp as idea_bp
+    from api.analysis import bp as analysis_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(idea_bp)
+    app.register_blueprint(analysis_bp)
 
     @app.context_processor
     def inject_globals():
@@ -45,6 +47,11 @@ def create_app(config_class=Config):
 
     with app.app_context():
         db.create_all()
+        try:
+            from migrate_db import upgrade_db
+            upgrade_db()
+        except Exception:
+            pass
 
     return app
 
