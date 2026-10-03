@@ -11,12 +11,17 @@ from services.analysis.context import AnalysisContext
 from modules.blueprint_export import build_blueprint_docx
 
 
+from config import Config
+
+class TestConfig(Config):
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    WTF_CSRF_ENABLED = False
+
+
 class TestAnalysisPipeline(unittest.TestCase):
     def setUp(self):
-        self.app = create_app()
-        self.app.config["TESTING"] = True
-        self.app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
-        self.app.config["WTF_CSRF_ENABLED"] = False
+        self.app = create_app(config_class=TestConfig)
         self.client = self.app.test_client()
         self.app_context = self.app.app_context()
         self.app_context.push()

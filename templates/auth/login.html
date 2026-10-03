@@ -1,25 +1,64 @@
 {% extends "base.html" %}
-{% block title %}Login — YosiFix{% endblock %}
+{% block title %}Sign In — YosiFix{% endblock %}
 {% block content %}
-<div class="row justify-content-center">
-  <div class="col-md-5">
-    <div class="glass-card">
-      <h3 class="mb-4">{{ t('nav_login', lang) }}</h3>
-      <form method="POST">
+<div class="row justify-content-center py-4">
+  <div class="col-md-6 col-lg-5">
+    <div class="glass-card shadow-lg p-4 p-md-5">
+      <div class="text-center mb-4">
+        <h3 class="fw-bold mb-1">{{ t('nav_login', lang) }}</h3>
+        <p class="text-muted small">Sign in to your YosiFix account to access your projects and evidence boards.</p>
+      </div>
+
+      <!-- Google Sign In Button -->
+      <a href="{{ url_for('auth.google_auth') }}" class="btn btn-outline-light w-100 d-flex align-items-center justify-content-center gap-2 py-2 mb-3 bg-white text-dark border shadow-sm rounded-3 fw-medium">
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+          <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.836.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+          <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        <span>Continue with Google</span>
+      </a>
+
+      <div class="d-flex align-items-center my-3">
+        <hr class="flex-grow-1 border-secondary">
+        <span class="px-3 text-muted small text-uppercase">or sign in with password</span>
+        <hr class="flex-grow-1 border-secondary">
+      </div>
+
+      <!-- Standard Form -->
+      <form method="POST" action="{{ url_for('auth.login') }}">
         <div class="mb-3">
-          <label class="form-label">Username or Email</label>
-          <input type="text" name="identifier" class="form-control" required autofocus>
+          <label class="form-label small fw-semibold">Username or Email</label>
+          <input type="text" name="identifier" class="form-control" placeholder="Enter your username or email" required autofocus autocomplete="username">
         </div>
         <div class="mb-3">
-          <label class="form-label">Password</label>
-          <input type="password" name="password" class="form-control" required>
+          <label class="form-label small fw-semibold">Password</label>
+          <input type="password" name="password" class="form-control" placeholder="Enter your password" required autocomplete="current-password">
         </div>
-        <button type="submit" class="btn btn-brand w-100">{{ t('nav_login', lang) }}</button>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="remember" id="rememberMe" checked>
+            <label class="form-check-label small text-muted" for="rememberMe">Remember me</label>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">Sign In</button>
       </form>
-      <p class="text-center mt-3 mb-0">
-        <small>No account yet? <a href="{{ url_for('auth.register') }}">{{ t('nav_register', lang) }}</a></small>
+
+      <p class="text-center mt-4 mb-0">
+        <small class="text-muted">Don't have an account yet? <a href="{{ url_for('auth.register') }}" class="text-primary fw-semibold">{{ t('nav_register', lang) }}</a></small>
       </p>
     </div>
   </div>
 </div>
+
+{% if google_client_id %}
+<!-- Google Identity Services (One Tap) -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<div id="g_id_onload"
+     data-client_id="{{ google_client_id }}"
+     data-login_uri="{{ url_for('auth.google_one_tap', _external=True) }}"
+     data-auto_prompt="true">
+</div>
+{% endif %}
 {% endblock %}

@@ -75,7 +75,7 @@ class ClaimEvidenceSchema(PipelineBaseSchema):
 class EvidenceBoardSchema(PipelineBaseSchema):
     claims: List[ClaimEvidenceSchema] = Field(default_factory=list, description="List of verified/unverified problem claims")
     unverified_assumptions: List[str] = Field(default_factory=list, description="Risky assumptions that need customer validation")
-    validation_summary: str = Field(..., description="Overall assessment: is the problem real and verified?")
+    validation_summary: str = Field(default="", description="Overall assessment: is the problem real and verified?")
 
 
 # ---------------------------------------------------------------------------

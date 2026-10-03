@@ -49,6 +49,20 @@ def upgrade_db(db_path=None):
             print(f"Adding column '{col_name}' to analysis_results...")
             cursor.execute(f"ALTER TABLE analysis_results ADD COLUMN {col_name} {col_def};")
 
+    # Migrate users table
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users';")
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(users);")
+        user_cols = {row[1] for row in cursor.fetchall()}
+        user_new_cols = [
+            ("google_id", "VARCHAR(100) DEFAULT NULL"),
+            ("avatar_url", "VARCHAR(255) DEFAULT NULL"),
+        ]
+        for col_name, col_def in user_new_cols:
+            if col_name not in user_cols:
+                print(f"Adding column '{col_name}' to users...")
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def};")
+
     conn.commit()
     conn.close()
     print("Database schema verified and upgraded.")

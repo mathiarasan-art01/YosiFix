@@ -14,16 +14,23 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(150), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=True)
+    google_id = db.Column(db.String(100), unique=True, nullable=True)
+    avatar_url = db.Column(db.String(255), nullable=True)
     preferred_language = db.Column(db.String(5), default="en")
     created_at = db.Column(db.DateTime, default=utcnow)
 
     ideas = db.relationship("Idea", backref="owner", lazy=True, cascade="all, delete-orphan")
 
     def set_password(self, raw_password):
-        self.password_hash = generate_password_hash(raw_password)
+        if raw_password:
+            self.password_hash = generate_password_hash(raw_password)
+        else:
+            self.password_hash = None
 
     def check_password(self, raw_password):
+        if not self.password_hash or self.password_hash == "GOOGLE_OAUTH_USER" or not raw_password:
+            return False
         return check_password_hash(self.password_hash, raw_password)
 
 

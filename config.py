@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -6,6 +7,13 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "yosifix-dev-secret-change-in-production")
     
+    # Session & Cookie persistence (30 days)
+    PERMANENT_SESSION_LIFETIME = timedelta(days=30)
+    REMEMBER_COOKIE_DURATION = timedelta(days=30)
+    REMEMBER_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+
     # On Vercel, root filesystem is read-only, so fallback SQLite must reside in /tmp
     if os.environ.get("VERCEL") and not os.environ.get("DATABASE_URL"):
         SQLALCHEMY_DATABASE_URI = "sqlite:////tmp/yosifix.db"
@@ -19,6 +27,10 @@ class Config:
     # rule-based engine automatically -- the app is fully functional with none of these set.
     GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    # Google OAuth / Sign-In settings
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 
     LANGUAGES = ["en", "ta", "hi"]
     DEFAULT_LANGUAGE = "en"
