@@ -6,17 +6,15 @@ Every module in the pipeline operates on structured data that adheres to these s
 Compatible with both Pydantic v1 and v2.
 """
 
-from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, Field
+from typing import List, Dict, Optional, Any, Annotated
+from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
 
 
 # ---------------------------------------------------------------------------
 # Helper Base Model supporting both v1 and v2 methods
 # ---------------------------------------------------------------------------
 class PipelineBaseSchema(BaseModel):
-    class Config:
-        arbitrary_types_allowed = True
-        extra = "ignore"
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="ignore")
 
     def to_dict(self) -> Dict[str, Any]:
         if hasattr(self, "model_dump"):
@@ -263,6 +261,22 @@ class MasterBlueprintSchema(PipelineBaseSchema):
     judge_defense_summary: str = Field(default="", description="Key counter-arguments prepared for critics")
 
 
+# Compatibility aliases for alternative schema names
+UnderstandingOut = IdeaUnderstandingSchema
+LandscapeOut = SolutionLandscapeSchema
+SimilarityOut = SimilarityAnalysisSchema
+NoveltyOut = NoveltyScoreSchema
+GapsOut = ResearchGapSchema
+MutationsOut = MutationEngineSchema
+RealityOut = RealityCheckSchema
+FailuresOut = FailureSimulationSchema
+ImpactOut = ImpactAndSDGSchema
+TechnologyOut = TechnologyDecisionSchema
+ArchitectureOut = ArchitectureSchema
+RoadmapOut = RoadmapSchema
+JudgeOut = JudgeAttackSchema
+BlueprintOut = MasterBlueprintSchema
+
 __all__ = [
     "PipelineBaseSchema",
     "IdeaUnderstandingSchema",
@@ -290,4 +304,18 @@ __all__ = [
     "JudgeQuestionSchema",
     "JudgeAttackSchema",
     "MasterBlueprintSchema",
+    "UnderstandingOut",
+    "LandscapeOut",
+    "SimilarityOut",
+    "NoveltyOut",
+    "GapsOut",
+    "MutationsOut",
+    "RealityOut",
+    "FailuresOut",
+    "ImpactOut",
+    "TechnologyOut",
+    "ArchitectureOut",
+    "RoadmapOut",
+    "JudgeOut",
+    "BlueprintOut",
 ]

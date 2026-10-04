@@ -148,3 +148,77 @@ def evaluate_judge_answer(project_id):
     except Exception as exc:
         current_app.logger.exception(f"Judge evaluation failed: {exc}")
         return jsonify({"error": "Failed to evaluate answer", "details": str(exc)}), 500
+
+
+@bp.route("/projects/<int:project_id>/blueprint", methods=["GET"])
+@login_required
+def get_blueprint(project_id):
+    """Retrieve full blueprint in structured JSON, markdown, or export."""
+    idea = Idea.query.filter_by(id=project_id, user_id=current_user.id).first()
+    if not idea:
+        return jsonify({"error": "Project not found or unauthorized"}), 404
+
+    ctx = AnalysisContext.from_db(idea).to_dict()
+    blueprint = ctx.get("blueprint", {})
+    from services.blueprint.blueprint_exporter import BlueprintExporter
+
+    fmt = request.args.get("format", "json").lower()
+    if fmt == "markdown":
+        return BlueprintExporter.export_markdown(blueprint, context=ctx), 200, {"Content-Type": "text/markdown; charset=utf-8"}
+
+    return jsonify({
+        "status": "success",
+        "project_id": idea.id,
+        "blueprint": blueprint,
+    })
+
+
+@bp.route("/projects/<int:project_id>/chat", methods=["POST"])
+@login_required
+def assistant_chat(project_id):
+    """Ask contextual questions to the project assistant."""
+    idea = Idea.query.filter_by(id=project_id, user_id=current_user.id).first()
+    if not idea:
+        return jsonify({"error": "Project not found or unauthorized"}), 404
+
+    data = request.get_json(silent=True) or {}
+    message = data.get("message", "").strip()
+    if not message:
+        return jsonify({"error": "'message' is required"}), 400
+
+    ctx = AnalysisContext.from_db(idea)
+    from services.assistant.assistant_service import AssistantService
+    groq_key = current_app.config.get("GROQ_API_KEY", "")
+    client = GroqClient(api_key=groq_key)
+    assistant = AssistantService(groq_client=client)
+    res = assistant.ask(ctx, message, chat_history=data.get("history", []))
+
+    return jsonify({
+        "status": "success",
+        "reply": res["response"],
+        "engine": res["engine"],
+    })
+
+
+@bp.route("/projects/<int:project_id>/evidence/refresh", methods=["POST"])
+@login_required
+def refresh_evidence(project_id):
+    """Trigger real-time multi-source research for verified evidence."""
+    idea = Idea.query.filter_by(id=project_id, user_id=current_user.id).first()
+    if not idea:
+        return jsonify({"error": "Project not found or unauthorized"}), 404
+
+    ctx = AnalysisContext.from_db(idea)
+    try:
+        from services.research.research_service import ResearchService
+        research_svc = ResearchService()
+        findings = research_svc.conduct_research(ctx.to_dict(), idea_id=idea.id)
+        return jsonify({
+            "status": "success",
+            "count": len(findings),
+            "evidence": findings,
+        })
+    except Exception as exc:
+        current_app.logger.exception(f"Evidence refresh failed: {exc}")
+        return jsonify({"error": "Evidence refresh failed", "details": str(exc)}), 500
+

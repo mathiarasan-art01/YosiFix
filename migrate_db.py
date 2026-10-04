@@ -1,72 +1,60 @@
-# migrate_db.py
-"""Automatic schema migration utility to ensure all columns exist in the database."""
+"""Lightweight, idempotent schema upgrades.
 
-import sqlite3
-import os
+``db.create_all()`` creates new tables but never adds columns to existing ones. This
+adds the columns introduced by newer versions of YosiFix. It uses SQLAlchemy's
+inspector so it works on SQLite (local) and PostgreSQL (production) alike.
+"""
+import logging
+
+from sqlalchemy import inspect, text
+
+logger = logging.getLogger("yosifix.migrate")
+
+# table -> [(column, DDL type + default)]
+COLUMN_UPGRADES = {
+    "users": [
+        ("google_id", "VARCHAR(100)"),
+        ("avatar_url", "VARCHAR(255)"),
+        ("preferred_language", "VARCHAR(5) DEFAULT 'en'"),
+    ],
+    "ideas": [
+        ("status", "VARCHAR(30) DEFAULT 'draft'"),
+        ("selected_mutation_id", "VARCHAR(100)"),
+    ],
+    "idea_versions": [
+        ("actor", "VARCHAR(20) DEFAULT 'user'"),
+        ("stage", "VARCHAR(40) DEFAULT 'idea'"),
+        ("snapshot", "JSON"),
+    ],
+}
 
 
-def upgrade_db(db_path=None):
-    if not db_path:
-        db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "instance", "yosifix.db"))
+def upgrade_db(engine=None):
+    """Add any missing columns. Safe to run on every start."""
+    if engine is None:
+        from extensions import db
+        engine = db.engine
 
-    if not os.path.exists(db_path):
-        print(f"Database at {db_path} does not exist yet. It will be created on first start.")
-        return
-
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='analysis_results';")
-    if not cursor.fetchone():
-        print("Table analysis_results does not exist yet.")
-        conn.close()
-        return
-
-    cursor.execute("PRAGMA table_info(analysis_results);")
-    existing_cols = {row[1] for row in cursor.fetchall()}
-
-    new_cols = [
-        ("normalized_idea", "TEXT DEFAULT ''"),
-        ("problem", "TEXT DEFAULT ''"),
-        ("target_users", "JSON DEFAULT '[]'"),
-        ("keywords", "JSON DEFAULT '[]'"),
-        ("landscape", "JSON DEFAULT '{}'"),
-        ("evidence", "JSON DEFAULT '{}'"),
-        ("novelty", "JSON DEFAULT '{}'"),
-        ("mutations", "JSON DEFAULT '[]'"),
-        ("selected_mutation_id", "VARCHAR(100) DEFAULT ''"),
-        ("selected_mutation_detail", "JSON DEFAULT '{}'"),
-        ("reality_check", "JSON DEFAULT '{}'"),
-        ("failures", "JSON DEFAULT '{}'"),
-        ("judge_attack", "JSON DEFAULT '{}'"),
-        ("blueprint", "JSON DEFAULT '{}'"),
-        ("completed_stages", "JSON DEFAULT '[]'"),
-        ("current_stage", "VARCHAR(50) DEFAULT 'initialized'"),
-    ]
-
-    for col_name, col_def in new_cols:
-        if col_name not in existing_cols:
-            print(f"Adding column '{col_name}' to analysis_results...")
-            cursor.execute(f"ALTER TABLE analysis_results ADD COLUMN {col_name} {col_def};")
-
-    # Migrate users table
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users';")
-    if cursor.fetchone():
-        cursor.execute("PRAGMA table_info(users);")
-        user_cols = {row[1] for row in cursor.fetchall()}
-        user_new_cols = [
-            ("google_id", "VARCHAR(100) DEFAULT NULL"),
-            ("avatar_url", "VARCHAR(255) DEFAULT NULL"),
-        ]
-        for col_name, col_def in user_new_cols:
-            if col_name not in user_cols:
-                print(f"Adding column '{col_name}' to users...")
-                cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def};")
-
-    conn.commit()
-    conn.close()
-    print("Database schema verified and upgraded.")
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    added = []
+    with engine.begin() as conn:
+        for table, columns in COLUMN_UPGRADES.items():
+            if table not in existing_tables:
+                continue
+            present = {c["name"] for c in inspector.get_columns(table)}
+            for name, ddl in columns:
+                if name not in present:
+                    conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}'))
+                    added.append(f"{table}.{name}")
+    if added:
+        logger.info("Schema upgraded: added %s", ", ".join(added))
+    return added
 
 
 if __name__ == "__main__":
-    upgrade_db()
+    from app import create_app
+
+    application = create_app()
+    with application.app_context():
+        print("Added columns:", upgrade_db() or "none (schema already current)")

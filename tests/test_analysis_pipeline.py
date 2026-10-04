@@ -11,12 +11,7 @@ from services.analysis.context import AnalysisContext
 from modules.blueprint_export import build_blueprint_docx
 
 
-from config import Config
-
-class TestConfig(Config):
-    TESTING = True
-    SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
-    WTF_CSRF_ENABLED = False
+from config import TestConfig
 
 
 class TestAnalysisPipeline(unittest.TestCase):

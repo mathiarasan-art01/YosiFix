@@ -1,3 +1,4 @@
+import io
 from flask import (
     Blueprint, render_template, redirect, url_for, request, flash,
     session, send_file, current_app, abort, jsonify
@@ -215,3 +216,64 @@ def export(idea_id):
         download_name=f"YosiFix_{safe_name}.docx",
         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
+
+
+@bp.route("/<int:idea_id>/export/markdown")
+@login_required
+def export_markdown(idea_id):
+    idea = Idea.query.filter_by(id=idea_id, user_id=current_user.id).first_or_404()
+    if not idea.analysis:
+        abort(400, "Analyze the idea before exporting a blueprint.")
+    ctx = AnalysisContext.from_db(idea).to_dict()
+    blueprint = ctx.get("blueprint", {})
+    from services.blueprint.blueprint_exporter import BlueprintExporter
+    md_content = BlueprintExporter.export_markdown(blueprint, context=ctx)
+    safe_name = "".join(c for c in idea.title if c.isalnum() or c in (" ", "_", "-")).strip()[:40] or "blueprint"
+    buf = io.BytesIO(md_content.encode("utf-8"))
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"YosiFix_{safe_name}.md",
+        mimetype="text/markdown; charset=utf-8",
+    )
+
+
+@bp.route("/<int:idea_id>/export/json")
+@login_required
+def export_json(idea_id):
+    idea = Idea.query.filter_by(id=idea_id, user_id=current_user.id).first_or_404()
+    if not idea.analysis:
+        abort(400, "Analyze the idea before exporting a blueprint.")
+    ctx = AnalysisContext.from_db(idea).to_dict()
+    blueprint = ctx.get("blueprint", {})
+    from services.blueprint.blueprint_exporter import BlueprintExporter
+    json_content = BlueprintExporter.export_json(blueprint, context=ctx)
+    safe_name = "".join(c for c in idea.title if c.isalnum() or c in (" ", "_", "-")).strip()[:40] or "blueprint"
+    buf = io.BytesIO(json_content.encode("utf-8"))
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"YosiFix_{safe_name}.json",
+        mimetype="application/json; charset=utf-8",
+    )
+
+
+@bp.route("/<int:idea_id>/chat", methods=["POST"])
+@login_required
+def chat(idea_id):
+    idea = Idea.query.filter_by(id=idea_id, user_id=current_user.id).first_or_404()
+    message = (
+        (request.json.get("message") if request.is_json else request.form.get("message", ""))
+        or ""
+    ).strip()
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
+
+    ctx = AnalysisContext.from_db(idea)
+    from services.assistant.assistant_service import AssistantService
+    groq_key = current_app.config.get("GROQ_API_KEY", "")
+    client = GroqClient(api_key=groq_key)
+    assistant = AssistantService(groq_client=client)
+    res = assistant.ask(ctx, message)
+    return jsonify({"status": "success", "reply": res["response"], "engine": res["engine"]})
+

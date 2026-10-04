@@ -29,7 +29,7 @@ def _generate_unique_username(base_name: str) -> str:
 
 @bp.route("/register", methods=["GET", "POST"])
 def register():
-    if current_user.is_authenticated:
+    if request.method == "GET" and current_user.is_authenticated:
         return redirect(url_for("main.dashboard"))
 
     google_client_id = current_app.config.get("GOOGLE_CLIENT_ID", "")
@@ -91,7 +91,7 @@ def register():
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
-    if current_user.is_authenticated:
+    if request.method == "GET" and current_user.is_authenticated:
         return redirect(url_for("main.dashboard"))
 
     google_client_id = current_app.config.get("GOOGLE_CLIENT_ID", "")
@@ -119,6 +119,8 @@ def login():
             next_page = request.args.get("next")
             return redirect(next_page or url_for("main.dashboard"))
 
+        # If previous user was active, log out
+        logout_user()
         flash("Invalid username/email or password. Please check your credentials.", "danger")
         return redirect(url_for("auth.login"))
 
@@ -129,12 +131,14 @@ def login():
 
 
 @bp.route("/logout")
-@login_required
 def logout():
     logout_user()
     session.clear()
     flash("You have been logged out safely.", "info")
-    return redirect(url_for("main.landing"))
+    response = redirect(url_for("main.landing"))
+    cookie_name = current_app.config.get("REMEMBER_COOKIE_NAME", "remember_token")
+    response.delete_cookie(cookie_name)
+    return response
 
 
 # ---------------------------------------------------------------------------

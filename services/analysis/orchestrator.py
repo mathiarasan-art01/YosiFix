@@ -41,7 +41,17 @@ STAGE_ORDER = [
 
 class AnalysisOrchestrator:
     def __init__(self, client: Optional[GroqClient] = None):
-        self.client = client or GroqClient()
+        if client is not None:
+            self.client = client
+        else:
+            try:
+                from flask import current_app, has_app_context
+                if has_app_context() and current_app and hasattr(current_app, "config"):
+                    self.client = GroqClient.from_app(current_app)
+                else:
+                    self.client = GroqClient()
+            except Exception:
+                self.client = GroqClient()
 
     def run_full_analysis(
         self,
@@ -75,6 +85,14 @@ class AnalysisOrchestrator:
         # Stage 3: Evidence Board
         evidence_res = self.client.verify_evidence(ctx.to_dict())
         ctx.evidence = evidence_res.to_dict()
+        try:
+            from services.research.research_service import ResearchService
+            research_svc = ResearchService()
+            external_evidence = research_svc.conduct_research(ctx.to_dict(), idea_id=idea.id)
+            if external_evidence:
+                ctx.evidence["evidence_sources"] = external_evidence
+        except Exception as e:
+            logger.warning(f"External evidence gathering skipped: {e}")
         ctx.mark_stage_completed("evidence_board")
 
         # Stage 4: Similarity Analysis
@@ -158,30 +176,39 @@ class AnalysisOrchestrator:
             # If no mutations recorded yet, run full analysis
             return self.run_full_analysis(idea, selected_mutation_id=mutation_id, db_session=session)
 
-        # Select the chosen mutation
+        # Select the chosen mutation and invalidate downstream stages
         ctx.select_mutation(mutation_id)
+        from services.analysis.invalidation import InvalidationManager
+        InvalidationManager.invalidate_for_mutation_selection(ctx)
 
         # Downstream stages dependent on the mutation
         reality_res = self.client.reality_check(ctx.to_dict())
         ctx.reality_check = reality_res.to_dict()
+        ctx.mark_stage_completed("reality_check")
 
         fail_res = self.client.simulate_failures(ctx.to_dict())
         ctx.failures = fail_res.to_dict()
+        ctx.mark_stage_completed("failure_simulation")
 
         tech_res = self.client.recommend_technology(ctx.to_dict())
         ctx.technology = tech_res.to_dict()
+        ctx.mark_stage_completed("technology_decision")
 
         arch_res = self.client.generate_architecture(ctx.to_dict())
         ctx.architecture = arch_res.to_dict()
+        ctx.mark_stage_completed("architecture")
 
         roadmap_res = self.client.generate_roadmap(ctx.to_dict())
         ctx.roadmap = roadmap_res.to_dict()
+        ctx.mark_stage_completed("roadmap")
 
         judge_res = self.client.generate_judge_questions(ctx.to_dict())
         ctx.judge_attack = judge_res.to_dict()
+        ctx.mark_stage_completed("judge_attack")
 
         blueprint_res = self.client.generate_blueprint(ctx.to_dict())
         ctx.blueprint = blueprint_res.to_dict()
+        ctx.mark_stage_completed("master_blueprint")
 
         ctx.sync_to_db(idea, session)
         return ctx

@@ -3,7 +3,7 @@
 
 Reads configuration from environment variables or Flask configuration:
 - GROQ_API_KEY: Groq API key (optional; if missing, falls back to deterministic rule engine).
-- GROQ_MODEL: Groq model name (defaults to 'llama-3.3-70b-versatile').
+- GROQ_MODEL: Groq model name (defaults to 'openai/gpt-oss-20b' with fallback hierarchy).
 - GROQ_TIMEOUT: request timeout in seconds (defaults to 30).
 
 Provides high-level typed methods for every stage of the YosiFix analysis pipeline,
@@ -21,6 +21,9 @@ from pydantic import BaseModel, ValidationError
 
 from services.groq import prompts
 from services.groq import fallback
+from services.groq.model_config import FALLBACK_MODELS, REASONING_MODELS, DEFAULT_MODEL, DEFAULT_TIMEOUT
+from services.groq.parser import parse_json_response
+from services.groq.errors import LLMError
 from services.groq.schemas import (
     IdeaUnderstandingSchema,
     SolutionLandscapeSchema,
@@ -43,10 +46,12 @@ logger = logging.getLogger("yosifix.groq")
 _ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 
 
-class GroqClient:
+class GroqService:
     """Robust Groq client with schema enforcement and seamless offline fallback."""
 
     _circuit_cooldown_until: float = 0.0
+    _dead_models: set = set()
+    _last_error: str = ""
 
     def __init__(
         self,
@@ -54,9 +59,9 @@ class GroqClient:
         model: Optional[str] = None,
         timeout: Optional[int] = None,
     ):
-        self.api_key = api_key or os.getenv("GROQ_API_KEY") or ""
-        self.model = model or os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
-        self.timeout = timeout or int(os.getenv("GROQ_TIMEOUT", "10"))
+        self.api_key = (api_key if api_key is not None else os.getenv("GROQ_API_KEY", "")).strip()
+        self.model = (model or os.getenv("GROQ_MODEL") or DEFAULT_MODEL).strip()
+        self.timeout = timeout or int(os.getenv("GROQ_TIMEOUT", str(DEFAULT_TIMEOUT)))
         self._groq_sdk = None
 
         if self.api_key:
@@ -66,12 +71,29 @@ class GroqClient:
             except Exception:
                 self._groq_sdk = None
 
+    @classmethod
+    def from_app(cls, app=None):
+        from flask import current_app
+        cfg = (app or current_app).config
+        return cls(cfg.get("GROQ_API_KEY", ""), cfg.get("GROQ_MODEL"), cfg.get("GROQ_TIMEOUT"))
+
     def is_configured(self) -> bool:
         return bool(
             self.api_key
             and self.api_key.strip()
-            and time.time() >= GroqClient._circuit_cooldown_until
+            and time.time() >= GroqService._circuit_cooldown_until
         )
+
+    def configured(self) -> bool:
+        return bool(self.api_key and self.api_key.strip())
+
+    def available(self) -> bool:
+        return self.is_configured()
+
+    def _candidate_models(self):
+        chain = [self.model] + [m for m in FALLBACK_MODELS if m != self.model]
+        candidates = [m for m in chain if m not in GroqService._dead_models]
+        return candidates or [DEFAULT_MODEL]
 
     def call(
         self,
@@ -84,7 +106,7 @@ class GroqClient:
         Raises RuntimeError if not configured or if all retries fail.
         """
         if not self.is_configured():
-            raise RuntimeError("GROQ_API_KEY is not configured")
+            raise LLMError("GROQ_API_KEY is not configured or in cooldown")
 
         schema_json = ""
         if hasattr(response_model, "get_json_schema"):
@@ -105,64 +127,69 @@ class GroqClient:
             {"role": "user", "content": enriched_user_prompt},
         ]
 
-        attempt = 0
         last_error = None
+        for model in self._candidate_models():
+            for attempt in range(max_retries + 1):
+                try:
+                    raw_content = ""
+                    if self._groq_sdk:
+                        kwargs = dict(
+                            model=model,
+                            messages=messages,
+                            temperature=0.2,
+                            response_format={"type": "json_object"},
+                        )
+                        if any(model.startswith(r) for r in REASONING_MODELS):
+                            kwargs["reasoning_effort"] = "low"
+                        try:
+                            chat_completion = self._groq_sdk.chat.completions.create(**kwargs)
+                        except TypeError:
+                            kwargs.pop("reasoning_effort", None)
+                            chat_completion = self._groq_sdk.chat.completions.create(**kwargs)
+                        raw_content = chat_completion.choices[0].message.content or ""
+                    else:
+                        headers = {
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                        }
+                        payload = {
+                            "model": model,
+                            "messages": messages,
+                            "temperature": 0.2,
+                            "response_format": {"type": "json_object"},
+                        }
+                        with httpx.Client(timeout=self.timeout) as client:
+                            resp = client.post(_ENDPOINT, headers=headers, json=payload)
+                            resp.raise_for_status()
+                            data = resp.json()
+                            raw_content = data["choices"][0]["message"]["content"]
 
-        while attempt < max_retries:
-            attempt += 1
-            try:
-                raw_content = ""
-                if self._groq_sdk:
-                    # Use official Groq SDK
-                    chat_completion = self._groq_sdk.chat.completions.create(
-                        messages=messages,
-                        model=self.model,
-                        temperature=0.2,
-                        response_format={"type": "json_object"},
-                    )
-                    raw_content = chat_completion.choices[0].message.content or ""
-                else:
-                    # HTTPX fallback
-                    headers = {
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    }
-                    payload = {
-                        "model": self.model,
-                        "messages": messages,
-                        "temperature": 0.2,
-                        "response_format": {"type": "json_object"},
-                    }
-                    with httpx.Client(timeout=self.timeout) as client:
-                        resp = client.post(_ENDPOINT, headers=headers, json=payload)
-                        resp.raise_for_status()
-                        data = resp.json()
-                        raw_content = data["choices"][0]["message"]["content"]
+                    parsed_dict = parse_json_response(raw_content)
 
-                # Parse JSON
-                clean_json_str = raw_content.strip()
-                if clean_json_str.startswith("```"):
-                    lines = clean_json_str.split("\n")
-                    if lines[0].startswith("```"):
-                        lines = lines[1:]
-                    if lines and lines[-1].startswith("```"):
-                        lines = lines[:-1]
-                    clean_json_str = "\n".join(lines).strip()
+                    # Validate against Pydantic schema
+                    if hasattr(response_model, "model_validate"):
+                        return response_model.model_validate(parsed_dict)
+                    return response_model.parse_obj(parsed_dict)
 
-                parsed_dict = json.loads(clean_json_str)
+                except Exception as exc:
+                    last_error = exc
+                    err_msg = str(exc).lower()
+                    if "404" in err_msg or "model_not_found" in err_msg or "does not exist" in err_msg:
+                        logger.warning(f"Model {model} unavailable, moving to next model: {exc}")
+                        GroqService._dead_models.add(model)
+                        break
+                    elif "401" in err_msg or "invalid api key" in err_msg:
+                        GroqService._circuit_cooldown_until = time.time() + 300
+                        logger.error(f"Groq API key invalid: {exc}")
+                        raise LLMError("Invalid GROQ_API_KEY") from exc
+                    elif attempt < max_retries:
+                        logger.warning(f"Groq call attempt {attempt+1} failed: {exc}. Retrying...")
+                        time.sleep(1.0)
+                    else:
+                        logger.warning(f"Groq model {model} failed: {exc}")
 
-                # Validate against Pydantic schema
-                if hasattr(response_model, "model_validate"):
-                    return response_model.model_validate(parsed_dict)
-                return response_model.parse_obj(parsed_dict)
-
-            except Exception as exc:
-                last_error = exc
-                logger.warning(f"Groq call failed: {exc}. Engaging offline fallback engine.")
-                GroqClient._circuit_cooldown_until = time.time() + 15.0
-                break
-
-        raise RuntimeError(f"Groq request failed: {last_error}")
+        GroqService._circuit_cooldown_until = time.time() + 15.0
+        raise LLMError(f"Groq request failed: {last_error}")
 
     # -----------------------------------------------------------------------
     # Typed pipeline stage methods with automated fallback
@@ -298,7 +325,7 @@ class GroqClient:
         system_p, user_p = prompts.judge_evaluate_prompt(question, user_answer, context)
         if self.is_configured():
             try:
-                response = self.call(system_p, user_p, BaseModel) # or dict
+                pass
             except Exception:
                 pass
         return {
@@ -320,3 +347,7 @@ class GroqClient:
             except Exception as exc:
                 logger.warning(f"Fallback to rule engine for generate_blueprint: {exc}")
         return fallback.fallback_master_blueprint(context)
+
+
+# Alias GroqClient to GroqService for seamless compatibility
+GroqClient = GroqService

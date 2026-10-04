@@ -40,7 +40,17 @@ def generate_master_prompt(idea, analysis, target_tool="claude"):
     ) or "  - (no strong SDG alignment detected)"
     stack = analysis.tech_stack or {}
     extras = ", ".join(stack.get("extra_tools", [])) or "none"
-    mvp_lines = "\n".join(f"  {i+1}. {item}" for i, item in enumerate((analysis.roadmap or {}).get("mvp", [])))
+    mvp_items = []
+    if isinstance(analysis.roadmap, dict):
+        mvp_items = analysis.roadmap.get("mvp") or analysis.roadmap.get("phases", [])
+    elif isinstance(analysis.roadmap, list):
+        if analysis.roadmap and isinstance(analysis.roadmap[0], dict):
+            mvp_items = analysis.roadmap[0].get("deliverables") or [analysis.roadmap[0].get("phase_name", "MVP Phase")]
+        else:
+            mvp_items = analysis.roadmap
+    if not mvp_items:
+        mvp_items = ["Develop core proof of concept", "Validate with target users", "Implement offline-first safeguards"]
+    mvp_lines = "\n".join(f"  {i+1}. {item}" for i, item in enumerate(mvp_items))
 
     prompt = f"""You are building a project called "{idea.title}".
 

@@ -111,7 +111,11 @@ class AnalysisContext:
             ctx.impact = {
                 "sdg_mappings": getattr(analysis, "sdg_mappings", []) or [],
             }
-            ctx.technology = getattr(analysis, "tech_stack", {}) or {}
+            tech_raw = getattr(analysis, "tech_stack", {}) or {}
+            if isinstance(tech_raw, dict) and "recommended_stack" not in tech_raw:
+                ctx.technology = {"recommended_stack": tech_raw, "architecture_pattern": "Modular Service Architecture"}
+            else:
+                ctx.technology = tech_raw
             ctx.architecture = {
                 "mermaid_diagram": getattr(analysis, "architecture_mermaid", "") or "",
             }
