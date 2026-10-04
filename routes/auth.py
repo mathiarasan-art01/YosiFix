@@ -38,10 +38,15 @@ def register():
         username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
+        password_confirm = request.form.get("password_confirm")
         language = request.form.get("language", "en")
 
         if not username or not email or not password:
             flash("All fields are required.", "danger")
+            return redirect(url_for("auth.register"))
+
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            flash("Please enter a valid email address.", "danger")
             return redirect(url_for("auth.register"))
 
         if len(username) < 3:
@@ -50,6 +55,10 @@ def register():
 
         if len(password) < 6:
             flash("Password must be at least 6 characters.", "danger")
+            return redirect(url_for("auth.register"))
+
+        if password_confirm is not None and password != password_confirm:
+            flash("Passwords do not match. Please verify your password.", "danger")
             return redirect(url_for("auth.register"))
 
         # Case-insensitive duplicate check
@@ -61,9 +70,10 @@ def register():
         if existing:
             if existing.email.lower() == email.lower():
                 flash("An account with this email already exists. Please log in.", "warning")
+                return redirect(url_for("auth.login"))
             else:
                 flash("This username is already taken. Please choose another.", "warning")
-            return redirect(url_for("auth.login"))
+                return redirect(url_for("auth.register"))
 
         try:
             user = User(username=username, email=email, preferred_language=language)

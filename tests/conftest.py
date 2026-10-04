@@ -40,6 +40,7 @@ def registered_client(client):
         "username": f"testuser_{suffix}",
         "email": f"test_{suffix}@example.com",
         "password": "password123",
+        "password_confirm": "password123",
         "language": "en",
     }, follow_redirects=True)
     return client

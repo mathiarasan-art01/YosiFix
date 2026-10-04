@@ -56,3 +56,27 @@ class Notification(db.Model):
     link = db.Column(db.String(300), default="")
     read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=utcnow)
+
+
+class ChatMessage(db.Model):
+    __tablename__ = "chat_messages"
+
+    id = db.Column(db.Integer, primary_key=True)
+    idea_id = db.Column(db.Integer, db.ForeignKey("ideas.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    role = db.Column(db.String(20), nullable=False)  # 'user' | 'assistant'
+    content = db.Column(db.Text, nullable=False)
+    engine = db.Column(db.String(80), default="")
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "idea_id": self.idea_id,
+            "user_id": self.user_id,
+            "role": self.role,
+            "content": self.content,
+            "engine": self.engine,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+

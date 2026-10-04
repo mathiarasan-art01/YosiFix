@@ -7,7 +7,7 @@ from models.user import User, GOOGLE_ONLY_SENTINEL
 from models.project import Idea, Project, IdeaVersion, ProjectVersion, PromptRecord
 from models.analysis import AnalysisStage, AnalysisCache, AnalysisResult
 from models.evidence import EvidenceSource
-from models.decision import UserOverride, JudgeAnswer, Notification
+from models.decision import UserOverride, JudgeAnswer, Notification, ChatMessage
 
 __all__ = [
     "utcnow",
@@ -15,5 +15,5 @@ __all__ = [
     "Idea", "Project", "IdeaVersion", "ProjectVersion", "PromptRecord",
     "AnalysisStage", "AnalysisCache", "AnalysisResult",
     "EvidenceSource",
-    "UserOverride", "JudgeAnswer", "Notification",
+    "UserOverride", "JudgeAnswer", "Notification", "ChatMessage",
 ]

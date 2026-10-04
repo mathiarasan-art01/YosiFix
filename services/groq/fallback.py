@@ -44,9 +44,12 @@ def _detect_domain(text: str) -> str:
         "Agriculture": len(re.findall(r"\b(crop|farm|soil|pest|plant|harvest|agri|farmer|seed|irrigation)\b", text_lower)),
         "Healthcare": len(re.findall(r"\b(health|patient|doctor|medical|disease|clinic|hospital|symptom|drug|telemedicine)\b", text_lower)),
         "Education": len(re.findall(r"\b(student|learn|teach|school|college|course|tutor|curriculum|exam|education)\b", text_lower)),
-        "FinTech": len(re.findall(r"\b(money|bank|finance|loan|credit|payment|invest|wealth|crypto|upi|wallet)\b", text_lower)),
-        "Clean Energy": len(re.findall(r"\b(energy|solar|power|battery|grid|carbon|renewable|emission|electric)\b", text_lower)),
-        "Logistics & Transportation": len(re.findall(r"\b(traffic|vehicle|transport|delivery|fleet|route|car|bus|commute)\b", text_lower)),
+        "Fintech & Payments": len(re.findall(r"\b(money|bank|finance|loan|credit|payment|invest|wealth|crypto|upi|wallet|fintech)\b", text_lower)),
+        "Environment & Sustainability": len(re.findall(r"\b(energy|solar|power|battery|grid|carbon|renewable|emission|electric|climate|waste)\b", text_lower)),
+        "Transportation & Logistics": len(re.findall(r"\b(traffic|vehicle|transport|delivery|fleet|route|car|bus|commute|transit|accident|logistics)\b", text_lower)),
+        "Safety & Security": len(re.findall(r"\b(safety|security|crime|fraud|emergency|disaster|threat|cyber|surveillance)\b", text_lower)),
+        "Productivity & Work": len(re.findall(r"\b(task|project|team|collaboration|workspace|productivity|schedule|workflow|crm)\b", text_lower)),
+        "E-commerce & Retail": len(re.findall(r"\b(shop|store|ecommerce|retail|inventory|cart|merchandise|order|checkout)\b", text_lower)),
     }
     best_domain = max(scores, key=scores.get)
     return best_domain if scores[best_domain] > 0 else "Smart Services & Technology"
@@ -61,12 +64,16 @@ def fallback_idea_understanding(raw_text: str) -> IdeaUnderstandingSchema:
     normalized = first_sentence if len(first_sentence) > 20 else raw_text[:120].strip()
 
     target_users = ["End-Users and Consumers", "Industry Operators / Practitioners", "Domain Experts"]
-    if domain == "Agriculture":
+    if "agri" in domain.lower() or "farm" in domain.lower():
         target_users = ["Smallholder & Commercial Farmers", "Agricultural Extension Officers", "Agronomists"]
-    elif domain == "Healthcare":
+    elif "health" in domain.lower() or "medic" in domain.lower():
         target_users = ["Patients & At-Risk Individuals", "Clinicians & Medical Staff", "Healthcare Administrators"]
-    elif domain == "Education":
+    elif "educat" in domain.lower() or "learn" in domain.lower():
         target_users = ["Students & Self-Learners", "Educators & Instructors", "Institutions & Schools"]
+    elif "transport" in domain.lower() or "traffic" in domain.lower():
+        target_users = ["Commuters & Drivers", "Fleet & Transit Operators", "Municipal Traffic Authorities"]
+    elif "fintech" in domain.lower() or "payment" in domain.lower():
+        target_users = ["Consumers & Small Merchants", "Financial Analysts & Auditors", "Payment Operations Teams"]
 
     return IdeaUnderstandingSchema(
         normalized_idea=normalized,
@@ -80,8 +87,15 @@ def fallback_idea_understanding(raw_text: str) -> IdeaUnderstandingSchema:
 
 
 def fallback_solution_landscape(context: Dict[str, Any]) -> SolutionLandscapeSchema:
-    domain = context.get("domain", "Agriculture")
-    kb_entries = KNOWLEDGE_BASE.get(domain, KNOWLEDGE_BASE.get("Agriculture", []))
+    domain = context.get("domain") or "Smart Services & Technology"
+    kb_entries = KNOWLEDGE_BASE.get(domain)
+    if not kb_entries:
+        domain_clean = domain.lower()
+        for k, v in KNOWLEDGE_BASE.items():
+            if k.lower() in domain_clean or any(w in k.lower() for w in domain_clean.split()):
+                kb_entries = v
+                break
+    kb_entries = kb_entries or []
     
     solutions = []
     for item in kb_entries[:4]:
@@ -99,12 +113,21 @@ def fallback_solution_landscape(context: Dict[str, Any]) -> SolutionLandscapeSch
     if not solutions:
         solutions = [
             ExistingSolutionSchema(
-                name=f"Generic {domain} Platform",
-                category="Commercial",
-                description=f"Standard centralized cloud software for {domain.lower()}.",
-                strengths=["Basic digitization", "Cloud reporting"],
-                limitations=["No local edge inference", "High cost", "Generic templates"],
-            )
+                name=f"{domain} Commercial Suite",
+                category="Commercial Platform",
+                description=f"Standard legacy cloud platform providing centralized data management for {domain.lower()}.",
+                strengths=["Basic workflow digitization", "Established cloud reporting", "Broad enterprise integration"],
+                limitations=["No local edge inference", "High deployment and licensing fees", "Lacks real-time adaptive intelligence"],
+                url_or_reference=f"https://www.google.com/search?q={domain.replace(' ', '+')}+platform",
+            ),
+            ExistingSolutionSchema(
+                name=f"OpenSource {domain} Tools",
+                category="Open Source",
+                description=f"Modular open-source libraries and scripts addressing specific {domain.lower()} operational tasks.",
+                strengths=["Extensible architecture", "Zero licensing cost", "Customizable codebase"],
+                limitations=["Requires significant developer setup", "Lacks mobile UX", "No SLA or real-time support"],
+                url_or_reference=f"https://github.com/topics/{domain.lower().replace(' ', '-')}",
+            ),
         ]
 
     return SolutionLandscapeSchema(

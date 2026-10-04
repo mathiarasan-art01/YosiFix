@@ -45,44 +45,12 @@
         <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">Sign In</button>
       </form>
 
-      <!-- Pre-Configured Accounts Box -->
-      <div class="mt-4 p-3 rounded-3" style="background: rgba(124, 92, 255, 0.08); border: 1px dashed rgba(124, 92, 255, 0.35);">
-        <div class="d-flex align-items-center justify-content-between mb-1">
-          <span class="small fw-semibold text-light"><i class="bi bi-shield-check text-success me-1"></i> Pre-Configured Accounts</span>
-          <span class="badge bg-secondary-subtle text-light small" style="font-size: 0.7rem;">Permanent</span>
-        </div>
-        <p class="text-muted mb-2" style="font-size: 0.76rem;">Click any account below to autofill and sign in immediately:</p>
-        <div class="d-flex flex-wrap gap-2">
-          <button type="button" class="btn btn-sm btn-glass py-1 px-2" style="font-size: 0.78rem;" onclick="fillLogin('Arasan', 'password123')">
-            <i class="bi bi-person-badge text-primary"></i> <strong>Arasan</strong> (Dev)
-          </button>
-          <button type="button" class="btn btn-sm btn-glass py-1 px-2" style="font-size: 0.78rem;" onclick="fillLogin('admin', 'admin123')">
-            <i class="bi bi-person-gear text-info"></i> <strong>admin</strong>
-          </button>
-          <button type="button" class="btn btn-sm btn-glass py-1 px-2" style="font-size: 0.78rem;" onclick="fillLogin('demo', 'demo123')">
-            <i class="bi bi-person text-warning"></i> <strong>demo</strong>
-          </button>
-        </div>
-      </div>
-
       <p class="text-center mt-3 mb-0">
         <small class="text-muted">Don't have an account yet? <a href="{{ url_for('auth.register') }}" class="text-primary fw-semibold">{{ t('nav_register', lang) }}</a></small>
       </p>
     </div>
   </div>
 </div>
-
-<script>
-function fillLogin(identifier, password) {
-  const idInput = document.querySelector('input[name="identifier"]');
-  const pwInput = document.querySelector('input[name="password"]');
-  if (idInput && pwInput) {
-    idInput.value = identifier;
-    pwInput.value = password;
-    idInput.focus();
-  }
-}
-</script>
 
 {% if google_client_id %}
 <!-- Google Identity Services (One Tap) -->

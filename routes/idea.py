@@ -6,7 +6,7 @@ from flask import (
 from flask_login import login_required, current_user
 
 from extensions import db
-from models import Idea, IdeaVersion, AnalysisResult, PromptRecord
+from models import Idea, IdeaVersion, AnalysisResult, PromptRecord, ChatMessage
 from modules.i18n import t
 from modules.prompt_studio import generate_master_prompt, TOOL_NOTES
 from modules.blueprint_export import build_blueprint_docx
@@ -258,10 +258,17 @@ def export_json(idea_id):
     )
 
 
-@bp.route("/<int:idea_id>/chat", methods=["POST"])
+@bp.route("/<int:idea_id>/chat", methods=["GET", "POST"])
 @login_required
 def chat(idea_id):
     idea = Idea.query.filter_by(id=idea_id, user_id=current_user.id).first_or_404()
+
+    if request.method == "GET":
+        messages = ChatMessage.query.filter_by(
+            idea_id=idea.id, user_id=current_user.id
+        ).order_by(ChatMessage.created_at.asc()).all()
+        return jsonify({"status": "success", "messages": [m.to_dict() for m in messages]})
+
     message = (
         (request.json.get("message") if request.is_json else request.form.get("message", ""))
         or ""
@@ -269,11 +276,40 @@ def chat(idea_id):
     if not message:
         return jsonify({"error": "Message is required"}), 400
 
+    # Retrieve prior messages for context
+    prior_messages = ChatMessage.query.filter_by(
+        idea_id=idea.id, user_id=current_user.id
+    ).order_by(ChatMessage.created_at.asc()).all()
+    history = [{"role": m.role, "content": m.content} for m in prior_messages]
+
+    # Save user message
+    user_msg = ChatMessage(
+        idea_id=idea.id,
+        user_id=current_user.id,
+        role="user",
+        content=message,
+    )
+    db.session.add(user_msg)
+    db.session.commit()
+
     ctx = AnalysisContext.from_db(idea)
     from services.assistant.assistant_service import AssistantService
     groq_key = current_app.config.get("GROQ_API_KEY", "")
     client = GroqClient(api_key=groq_key)
     assistant = AssistantService(groq_client=client)
-    res = assistant.ask(ctx, message)
-    return jsonify({"status": "success", "reply": res["response"], "engine": res["engine"]})
+    res = assistant.ask(ctx, message, chat_history=history)
+
+    # Save assistant reply
+    asst_msg = ChatMessage(
+        idea_id=idea.id,
+        user_id=current_user.id,
+        role="assistant",
+        content=res["response"],
+        engine=res.get("engine", ""),
+    )
+    db.session.add(asst_msg)
+    db.session.commit()
+
+    return jsonify({"status": "success", "reply": res["response"], "engine": res.get("engine", "")})
+
 

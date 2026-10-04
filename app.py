@@ -24,21 +24,6 @@ def create_app(config_class=Config):
     def serve_static(filename):
         return send_from_directory(static_dir, filename)
 
-    import shutil
-    # Ensure SQLite database is seeded from bundled seed_data if missing or empty
-    seed_db = os.path.join(base_dir, "seed_data", "yosifix.db")
-    if os.path.exists(seed_db):
-        from config import IS_VERCEL
-        target_db = "/tmp/yosifix.db" if IS_VERCEL else os.path.join(base_dir, "instance", "yosifix.db")
-        target_dir = os.path.dirname(target_db)
-        try:
-            if target_dir:
-                os.makedirs(target_dir, exist_ok=True)
-            if not os.path.exists(target_db) or os.path.getsize(target_db) == 0:
-                shutil.copy2(seed_db, target_db)
-        except Exception:
-            pass
-
     try:
         instance_dir = os.path.join(app.root_path, "instance")
         os.makedirs(instance_dir, exist_ok=True)
@@ -73,14 +58,6 @@ def create_app(config_class=Config):
         try:
             from migrate_db import upgrade_db
             upgrade_db()
-        except Exception:
-            pass
-
-        # Self-healing seed for fresh databases
-        try:
-            if User.query.count() == 0:
-                from init_database import seed_database
-                seed_database(app)
         except Exception:
             pass
 

@@ -685,5 +685,36 @@ function sendAdvisorMessage() {
     chatHistory.appendChild(errDiv);
   });
 }
+
+function loadChatHistory() {
+  fetch("{{ url_for('idea.chat', idea_id=idea.id) }}")
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === 'success' && data.messages && data.messages.length > 0) {
+        const chatHistory = document.getElementById('chatHistory');
+        chatHistory.innerHTML = '';
+        data.messages.forEach(msg => {
+          if (msg.role === 'user') {
+            const userDiv = document.createElement('div');
+            userDiv.className = 'p-2 mb-2 bg-primary text-white rounded small text-end ms-4';
+            userDiv.textContent = msg.content;
+            chatHistory.appendChild(userDiv);
+          } else {
+            const replyDiv = document.createElement('div');
+            replyDiv.className = 'p-2 mb-2 bg-light rounded small text-dark border-start border-primary border-3';
+            const eng = msg.engine ? ` (${msg.engine})` : '';
+            replyDiv.innerHTML = `<strong>Advisor${eng}:</strong> ${msg.content}`;
+            chatHistory.appendChild(replyDiv);
+          }
+        });
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+      }
+    })
+    .catch(() => {});
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadChatHistory();
+});
 </script>
 {% endblock %}
