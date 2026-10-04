@@ -6,15 +6,23 @@ from modules.i18n import t as translate
 
 
 def create_app(config_class=Config):
-    # Keep the asset and template roots explicit so the Python runtime resolves
-    # them correctly when deployed from Vercel's project root.
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    static_dir = os.path.join(base_dir, "static")
+    template_dir = os.path.join(base_dir, "templates")
+
     app = Flask(
         __name__,
-        static_folder="static",
+        static_folder=static_dir,
         static_url_path="/static",
-        template_folder="templates",
+        template_folder=template_dir,
     )
     app.config.from_object(config_class)
+
+    from flask import send_from_directory
+
+    @app.route("/static/<path:filename>")
+    def serve_static(filename):
+        return send_from_directory(static_dir, filename)
 
     try:
         instance_dir = os.path.join(app.root_path, "instance")
