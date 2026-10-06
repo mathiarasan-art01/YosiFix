@@ -5,7 +5,7 @@ Importing from ``models`` keeps working exactly as before (``from models import 
 from models.base import utcnow
 from models.user import User, GOOGLE_ONLY_SENTINEL
 from models.project import Idea, Project, IdeaVersion, ProjectVersion, PromptRecord
-from models.analysis import AnalysisStage, AnalysisCache, AnalysisResult
+from models.analysis import AnalysisStage, AnalysisCache, AnalysisResult, AnalysisRun
 from models.evidence import EvidenceSource
 from models.decision import UserOverride, JudgeAnswer, Notification, ChatMessage
 
@@ -13,7 +13,7 @@ __all__ = [
     "utcnow",
     "User", "GOOGLE_ONLY_SENTINEL",
     "Idea", "Project", "IdeaVersion", "ProjectVersion", "PromptRecord",
-    "AnalysisStage", "AnalysisCache", "AnalysisResult",
+    "AnalysisStage", "AnalysisCache", "AnalysisResult", "AnalysisRun",
     "EvidenceSource",
     "UserOverride", "JudgeAnswer", "Notification", "ChatMessage",
 ]

@@ -1,4 +1,5 @@
 """Market product and existing solution discovery service."""
+import re
 import logging
 from typing import List, Dict, Any
 import httpx
@@ -14,9 +15,21 @@ class ProductResearchService:
     def search(self, query: str, domain: str = "Technology", limit: int = 4) -> List[Dict[str, Any]]:
         results = []
 
-        # 1. First consult curated domain knowledge base
+        # 1. Consult curated domain knowledge base ranked by query relevance
         kb_entries = KNOWLEDGE_BASE.get(domain, [])
-        for entry in kb_entries[:3]:
+        query_words = set(re.findall(r"\w+", query.lower())) - {"and", "the", "for", "with", "system", "app"}
+        
+        scored_entries = []
+        for entry in kb_entries:
+            entry_text = f"{entry['name']} {entry['description']} {' '.join(entry.get('key_features', []))}".lower()
+            overlap = sum(1 for w in query_words if w in entry_text)
+            scored_entries.append((overlap, entry))
+        
+        # Sort by highest keyword match
+        scored_entries.sort(key=lambda x: x[0], reverse=True)
+        top_candidates = [e for score, e in scored_entries if score > 0][:limit] or [e for _, e in scored_entries[:2]]
+
+        for entry in top_candidates:
             results.append({
                 "type": "product",
                 "title": entry["name"],

@@ -45,6 +45,10 @@ class Idea(db.Model):
     analysis = db.relationship(
         "AnalysisResult", backref="idea", lazy=True, cascade="all, delete-orphan", uselist=False
     )
+    runs = db.relationship(
+        "AnalysisRun", backref="idea", lazy=True, cascade="all, delete-orphan",
+        order_by="AnalysisRun.started_at",
+    )
 
 
 # Friendlier alias used by the new code.

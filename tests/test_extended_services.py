@@ -86,7 +86,7 @@ def test_cache_service(app):
     with app.app_context():
         payload = {"problem": "Soil testing delays", "domain": "Agriculture"}
         key = AnalysisCacheService.compute_cache_key("idea_understanding", payload)
-        assert len(key) == 64
+        assert "module:idea_understanding" in key and "hash:" in key
 
         output = {"normalized_idea": "Soil Test Pro"}
         AnalysisCacheService.set("idea_understanding", payload, output, engine="mock")

@@ -22,6 +22,8 @@ def _utcnow_iso():
 class AnalysisContext:
     project_id: int
     original_idea: str
+    idea_version_id: int = 1
+    analysis_run_id: Optional[int] = None
     normalized_idea: str = ""
     domain: str = "Technology"
     problem: str = ""
@@ -31,6 +33,7 @@ class AnalysisContext:
     requirements: List[str] = field(default_factory=list)
 
     # Stage outputs
+    research_results: List[Dict[str, Any]] = field(default_factory=list)
     landscape: Dict[str, Any] = field(default_factory=dict)
     evidence: Dict[str, Any] = field(default_factory=dict)
     similarity: Dict[str, Any] = field(default_factory=dict)
@@ -51,7 +54,7 @@ class AnalysisContext:
     # Pipeline metadata
     completed_stages: List[str] = field(default_factory=list)
     current_stage: str = "initialized"
-    engine_used: str = "groq"
+    engine_used: str = "openai"
     updated_at: str = field(default_factory=_utcnow_iso)
 
     def select_mutation(self, mutation_id: str) -> bool:
@@ -86,18 +89,21 @@ class AnalysisContext:
         return cls(**clean_data)
 
     @classmethod
-    def from_db(cls, idea) -> "AnalysisContext":
+    def from_db(cls, idea, version_id: Optional[int] = None, run_id: Optional[int] = None) -> "AnalysisContext":
         """Reconstruct context from an Idea model instance and its AnalysisResult."""
         analysis = getattr(idea, "analysis", None)
+        v_id = version_id or getattr(idea, "current_version", 1) or 1
         ctx = cls(
             project_id=idea.id,
             original_idea=idea.raw_text,
+            idea_version_id=v_id,
+            analysis_run_id=run_id,
             normalized_idea=idea.title,
             domain=idea.domain or "Technology",
         )
 
         if analysis:
-            ctx.engine_used = getattr(analysis, "engine_used", "groq") or "groq"
+            ctx.engine_used = getattr(analysis, "engine_used", "openai") or "openai"
             ctx.similarity = {
                 "matches": getattr(analysis, "similar_solutions", []) or [],
                 "overall_similarity_score": getattr(analysis, "overall_similarity", 0.0) or 0.0,
@@ -147,7 +153,7 @@ class AnalysisContext:
 
     def sync_to_db(self, idea, db_session):
         """Persist the current context into the Idea and AnalysisResult models."""
-        from models import AnalysisResult
+        from models import AnalysisResult, AnalysisStage
 
         analysis = getattr(idea, "analysis", None)
         if analysis is None:
@@ -185,6 +191,28 @@ class AnalysisContext:
             idea.domain = self.domain
         if self.novelty and "novelty_score" in self.novelty:
             idea.innovation_score = float(self.novelty["novelty_score"])
+
+        # Sync AnalysisStage records with project_id, version_id, run_id
+        for stage_name in self.completed_stages:
+            try:
+                stage_rec = AnalysisStage.query.filter_by(idea_id=idea.id, stage_key=stage_name).first()
+                if not stage_rec:
+                    stage_rec = AnalysisStage(
+                        idea_id=idea.id,
+                        stage_key=stage_name,
+                        status="done",
+                        idea_version_id=self.idea_version_id,
+                        analysis_run_id=self.analysis_run_id,
+                        engine=self.engine_used,
+                    )
+                    db_session.add(stage_rec)
+                else:
+                    stage_rec.status = "done"
+                    stage_rec.idea_version_id = self.idea_version_id
+                    stage_rec.analysis_run_id = self.analysis_run_id
+                    stage_rec.engine = self.engine_used
+            except Exception:
+                pass
 
         db_session.commit()
         return analysis

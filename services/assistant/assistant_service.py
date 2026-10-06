@@ -25,15 +25,34 @@ class AssistantService:
         system_prompt = AssistantContextBuilder.build_system_context(context)
         history = chat_history or []
 
-        # If Groq is not configured or in offline mode, provide deterministic contextual response
+        # If OpenAI is not configured or in offline mode, provide deterministic contextual response
         if not self.client.is_configured():
+            msg_lower = user_message.lower()
             mutation = context.selected_mutation_detail.get("title", "selected strategy")
             domain = context.domain
+            tech_stack = context.technology.get("recommended_stack", {})
+            failures = context.failures.get("failure_modes", [])
+            kill_factor = context.failures.get("kill_factor", "operational failure")
+
+            if "database" in msg_lower or "postgres" in msg_lower or "sql" in msg_lower or ("why" in msg_lower and "recommended" in msg_lower):
+                db_choice = tech_stack.get("database", "PostgreSQL") if isinstance(tech_stack, dict) else str(tech_stack)
+                reply = (
+                    f"For {context.normalized_idea or 'this project'} in the {domain} sector, {db_choice} is recommended "
+                    f"because it guarantees transactional integrity for project state while enabling robust indexing."
+                )
+            elif "risk" in msg_lower or "failure" in msg_lower or "kill" in msg_lower or "threat" in msg_lower or "biggest" in msg_lower:
+                top_mit = failures[0].get('mitigation_strategy', 'multi-factor verification') if failures and isinstance(failures[0], dict) else 'strict validation'
+                reply = (
+                    f"Based on the failure simulation for {context.normalized_idea or 'this project'}, the primary risk is: "
+                    f"'{kill_factor}'. Recommended mitigation: {top_mit}."
+                )
+            else:
+                reply = (
+                    f"Regarding '{user_message}': For {context.normalized_idea or 'this project'} in {domain} adopting the {mutation} pivot, "
+                    f"focus on mitigating '{kill_factor}' and validating core workflow requirements."
+                )
             return {
-                "response": (
-                    f"Regarding '{user_message}': For a {domain} initiative implementing the {mutation} pivot, "
-                    f"prioritize addressing the critical failure modes and securing edge data persistence first."
-                ),
+                "response": reply,
                 "engine": "rule-based",
             }
 
@@ -47,14 +66,14 @@ class AssistantService:
             sanitized = AssistantResponseValidator.sanitize_response(raw_answer, context.to_dict())
             return {
                 "response": sanitized,
-                "engine": "groq",
+                "engine": "openai",
             }
         except Exception as e:
-            logger.warning(f"Groq assistant chat failed: {e}. Falling back to contextual reply.")
+            logger.warning(f"OpenAI assistant chat failed: {e}. Falling back to contextual reply.")
             return {
                 "response": (
-                    f"Based on your analysis: your selected pivot '{context.selected_mutation_detail.get('title', 'strategy')}' "
-                    f"addresses the key market gap. For '{user_message}', ensure test coverage on your core offline synchronization first."
+                    f"Based on your project analysis for '{context.normalized_idea or 'your project'}': your selected pivot '{context.selected_mutation_detail.get('title', 'strategy')}' "
+                    f"addresses the core market gap. For '{user_message}', ensure your requirements and failure mitigations are tested first."
                 ),
                 "engine": "rule-based",
             }

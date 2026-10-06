@@ -78,9 +78,37 @@ def _compact_failures(modes: Any, limit: int = 3) -> str:
     return "\n".join(lines) if lines else "Latency bottlenecks and intermittent connectivity"
 
 
-def idea_understanding_prompt(raw_text: str) -> Tuple[str, str]:
+def _project_header(context: Optional[Dict[str, Any]], module_name: str) -> str:
+    if not context:
+        return f"CURRENT MODULE: {module_name}\n"
+    p_id = context.get("project_id", 0)
+    v_id = context.get("idea_version_id", context.get("current_version", 1))
+    orig = _compact_text(context.get("original_idea", ""), 200)
+    norm = _compact_text(context.get("normalized_idea", ""), 200)
+    prob = _compact_text(context.get("problem", ""), 200)
+    users = _compact_list(context.get("target_users", []))
+    domain = context.get("domain", "Technology")
+    return (
+        f"=== PROJECT CONTEXT ===\n"
+        f"PROJECT ID: {p_id}\n"
+        f"IDEA VERSION: {v_id}\n"
+        f"CURRENT USER IDEA: {orig}\n"
+        f"NORMALIZED IDEA: {norm}\n"
+        f"PROBLEM: {prob}\n"
+        f"TARGET USERS: {users}\n"
+        f"DOMAIN: {domain}\n"
+        f"CURRENT MODULE: {module_name}\n"
+        f"TASK: Perform this module's analysis for THIS project only. "
+        f"Do not provide a generic answer. Do not reuse conclusions from another project. "
+        f"Ground all findings strictly in this supplied project context.\n"
+        f"=======================\n\n"
+    )
+
+
+def idea_understanding_prompt(raw_text: str, context: Optional[Dict[str, Any]] = None) -> Tuple[str, str]:
+    header = _project_header(context, "Idea Understanding")
     cleaned = _compact_text(raw_text, 3500)
-    user_prompt = f"""Analyze the following raw project idea. Extract a crisp normalized description, primary target users/personas, high-level domain, core problem statement, domain keywords, key constraints, and essential requirements.
+    user_prompt = f"""{header}Analyze the following raw project idea. Extract a crisp normalized description, primary target users/personas, high-level domain, core problem statement, domain keywords, key constraints, and essential requirements.
 
 Raw Project Idea:
 {cleaned}
@@ -91,7 +119,8 @@ Return a valid JSON object matching the IdeaUnderstandingSchema.
 
 
 def solution_landscape_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
-    user_prompt = f"""Given the verified idea and problem context below, analyze the existing solution landscape.
+    header = _project_header(context, "Solution Landscape")
+    user_prompt = f"""{header}Given the verified idea and problem context below, analyze the existing solution landscape.
 Identify 3-4 existing tools, commercial products, open-source repositories, or academic baselines that attempt to solve this or similar problems.
 Highlight current market trends and research benchmarks.
 
@@ -108,8 +137,9 @@ Return a valid JSON object matching the SolutionLandscapeSchema.
 
 
 def evidence_board_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Evidence Board")
     solutions_summary = _compact_solutions(context.get('landscape', {}).get('existing_solutions', []))
-    user_prompt = f"""Investigate the factual validity of the claims and problem assumptions in this project.
+    user_prompt = f"""{header}Investigate the factual validity of the claims and problem assumptions in this project.
 Categorize each claim as 'verified', 'unverified', or 'disputed'.
 Provide empirical evidence, statistics, credible source organizations (e.g. WHO, FAO, IEEE, Gartner, World Bank, peer-reviewed literature), and identify unverified assumptions.
 
@@ -126,8 +156,9 @@ Return a valid JSON object matching the EvidenceBoardSchema.
 
 
 def similarity_analysis_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Similarity Analysis")
     solutions_summary = _compact_solutions(context.get('landscape', {}).get('existing_solutions', []))
-    user_prompt = f"""Compare the user's project against the existing solutions identified in the landscape.
+    user_prompt = f"""{header}Compare the user's project against the existing solutions identified in the landscape.
 Calculate an overall similarity percentage (0-100%), identify the closest competitor, evaluate feature-by-feature overlap, and provide an objective similarity verdict.
 
 Context:
@@ -143,8 +174,9 @@ Return a valid JSON object matching the SimilarityAnalysisSchema.
 
 
 def novelty_score_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Novelty Assessment")
     sim = context.get('similarity', {})
-    user_prompt = f"""Assess the true novelty of this project on a 0-100 scale based on evidence and similarity results.
+    user_prompt = f"""{header}Assess the true novelty of this project on a 0-100 scale based on evidence and similarity results.
 Determine if it is 'Highly Novel', an 'Incremental Improvement', or 'Derivative / Saturated'.
 Break down the novelty across technical, workflow, and market dimensions, and highlight the unique value propositions.
 
@@ -161,9 +193,10 @@ Return a valid JSON object matching the NoveltyScoreSchema.
 
 
 def research_gap_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Research Gap Analysis")
     solutions_summary = _compact_solutions(context.get('landscape', {}).get('existing_solutions', []))
     novelty = context.get('novelty', {})
-    user_prompt = f"""Identify the critical white spaces and unexplored gaps between existing solutions and unmet user needs.
+    user_prompt = f"""{header}Identify the critical white spaces and unexplored gaps between existing solutions and unmet user needs.
 Identify technical white spaces (e.g. offline execution, lightweight models, multimodal integration, privacy-preserving techniques) and market gaps.
 Recommend specific high-leverage angles to capture these gaps.
 
@@ -180,8 +213,9 @@ Return a valid JSON object matching the ResearchGapSchema.
 
 
 def mutation_engine_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Mutation Engine")
     gaps_summary = _compact_gaps(context.get('gaps', {}).get('white_spaces', []))
-    user_prompt = f"""Generate 3 to 4 distinct, transformative architectural/strategic mutations for this project.
+    user_prompt = f"""{header}Generate 3 to 4 distinct, transformative architectural/strategic mutations for this project.
 Each mutation must take this project from a standard idea into an exceptional, highly defensible solution.
 Examples of mutation paradigms:
 - 'edge_offline': On-device inference, zero-bandwidth fallback, edge computing
@@ -202,8 +236,9 @@ Return a valid JSON object matching the MutationEngineSchema.
 
 
 def reality_check_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Reality Check")
     selected_mutation = context.get('selected_mutation_detail', {})
-    user_prompt = f"""Perform a rigorous reality check and technical feasibility analysis.
+    user_prompt = f"""{header}Perform a rigorous reality check and technical feasibility analysis.
 Assess prerequisites (APIs, developer skills, datasets, hardware), regulatory/compliance hurdles (GDPR, HIPAA, liability), and assign a 0-100 buildability score.
 Estimate realistic MVP timeline in weeks for a focused team of 2-3 engineers.
 
@@ -221,9 +256,10 @@ Return a valid JSON object matching the RealityCheckSchema.
 
 
 def failure_simulation_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Failure Simulation")
     selected_mutation = context.get('selected_mutation_detail', {})
     reality = context.get('reality_check', {})
-    user_prompt = f"""Simulate the top 3-4 most probable real-world failure modes for this project.
+    user_prompt = f"""{header}Simulate the top 3-4 most probable real-world failure modes for this project.
 Consider data starvation, latency bottlenecks, operational unit economics, user adoption inertia, and critical single points of failure.
 Identify the single lethal 'kill factor' and specify concrete architectural mitigations.
 
@@ -240,8 +276,9 @@ Return a valid JSON object matching the FailureSimulationSchema.
 
 
 def impact_and_sdg_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Impact and SDG Mapping")
     claims_summary = _compact_claims(context.get('evidence', {}).get('claims', []))
-    user_prompt = f"""Map the project's genuine real-world impact and align with UN Sustainable Development Goals (SDGs).
+    user_prompt = f"""{header}Map the project's genuine real-world impact and align with UN Sustainable Development Goals (SDGs).
 Specify exact SDG numbers, official target numbers (e.g. Target 2.4, Target 3.8), verifiable quantifiable impact metrics, and expected beneficiary reach.
 
 Context:
@@ -257,8 +294,9 @@ Return a valid JSON object matching the ImpactAndSDGSchema.
 
 
 def technology_decision_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Technology Decision")
     selected_mutation = context.get('selected_mutation_detail', {})
-    user_prompt = f"""Recommend the optimal production technology stack for this project.
+    user_prompt = f"""{header}Recommend the optimal production technology stack for this project.
 For each layer (Frontend, Backend, Database, AI/ML, Cloud/Infra), detail the selected technology, the alternative considered, and a rigorous engineering justification for why the chosen tech wins and why the alternative was rejected.
 State the overarching architectural pattern.
 
@@ -275,13 +313,14 @@ Return a valid JSON object matching the TechnologyDecisionSchema.
 
 
 def architecture_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Architecture Design")
     tech = context.get('technology', {})
     fe = tech.get('frontend', {}).get('selected', 'React / Next.js') if isinstance(tech.get('frontend'), dict) else 'Web'
     be = tech.get('backend', {}).get('selected', 'FastAPI / Python') if isinstance(tech.get('backend'), dict) else 'API'
     db_tech = tech.get('database', {}).get('selected', 'PostgreSQL / SQLite') if isinstance(tech.get('database'), dict) else 'Database'
     pattern = tech.get('architecture_pattern', 'Layered Modular')
 
-    user_prompt = f"""Design the system architecture and generate valid Mermaid.js diagram syntax (flowchart TD or graph TD).
+    user_prompt = f"""{header}Design the system architecture and generate valid Mermaid.js diagram syntax (flowchart TD or graph TD).
 Break down all major subsystems, their responsibilities, exact technologies, and dependencies.
 Describe the complete end-to-end data flow.
 
@@ -298,9 +337,10 @@ Return a valid JSON object matching the ArchitectureSchema.
 
 
 def roadmap_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Roadmap Planning")
     reality = context.get('reality_check', {})
     failures = context.get('failures', {})
-    user_prompt = f"""Construct an execution roadmap with 3-4 structured phases.
+    user_prompt = f"""{header}Construct an execution roadmap with 3-4 structured phases.
 For each phase, specify duration in weeks, concrete testable deliverables, and key risks.
 Define the unambiguous MVP milestone criteria and critical path dependencies.
 
@@ -316,9 +356,10 @@ Return a valid JSON object matching the RoadmapSchema.
 
 
 def judge_attack_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Judge Attack Simulation")
     gaps_summary = _compact_gaps(context.get('gaps', {}).get('white_spaces', []))
     failures_summary = _compact_failures(context.get('failures', {}).get('failure_modes', []))
-    user_prompt = f"""Simulate an intense Q&A interrogation by top hackathon judges, technical lead architects, and venture investors.
+    user_prompt = f"""{header}Simulate an intense Q&A interrogation by top hackathon judges, technical lead architects, and venture investors.
 Generate 4-6 tough questions spanning technical defensibility, business viability, scalability limitations, and unit economics.
 For each question, explain why judges ask it, formulate a winning model defense strategy with concrete evidence to cite, and supply talking points.
 
@@ -337,7 +378,8 @@ Return a valid JSON object matching the JudgeAttackSchema.
 
 
 def judge_evaluate_prompt(question: str, user_answer: str, context: Dict[str, Any]) -> Tuple[str, str]:
-    user_prompt = f"""Evaluate the user's defense answer to a critical judge question.
+    header = _project_header(context, "Judge Answer Evaluation")
+    user_prompt = f"""{header}Evaluate the user's defense answer to a critical judge question.
 Grade the response (Score 0-100), identify strong points, highlight missing technical defenses or vulnerabilities, and provide an upgraded, polished rebuttal.
 
 Context:
@@ -358,12 +400,13 @@ Return a valid JSON object with fields:
 
 
 def master_blueprint_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    header = _project_header(context, "Master Blueprint Synthesis")
     tech = context.get('technology', {})
     fe = tech.get('frontend', {}).get('selected', 'Web App') if isinstance(tech.get('frontend'), dict) else 'Web'
     be = tech.get('backend', {}).get('selected', 'API Backend') if isinstance(tech.get('backend'), dict) else 'API'
     db_tech = tech.get('database', {}).get('selected', 'DB') if isinstance(tech.get('database'), dict) else 'DB'
 
-    user_prompt = f"""Synthesize all previous verified outputs into an authoritative Master Project Blueprint.
+    user_prompt = f"""{header}Synthesize all previous verified outputs into an authoritative Master Project Blueprint.
 Include an executive summary, verified problem statement, validated target audience, core innovation claim & gap captured, chosen mutation details, architecture summary, MVP execution strategy, a high-converting 30-second elevator pitch, and judge defense summary.
 
 Synthesized Decision State:

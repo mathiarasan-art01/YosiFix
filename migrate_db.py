@@ -26,6 +26,10 @@ COLUMN_UPGRADES = {
         ("stage", "VARCHAR(40) DEFAULT 'idea'"),
         ("snapshot", "JSON"),
     ],
+    "analysis_stages": [
+        ("idea_version_id", "INTEGER"),
+        ("analysis_run_id", "INTEGER"),
+    ],
 }
 
 

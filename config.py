@@ -44,15 +44,10 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
 
-    # OpenAI (primary provider)
+    # OpenAI Provider
     OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
     OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip()
     OPENAI_TIMEOUT = int(os.environ.get("OPENAI_TIMEOUT", "60"))
-
-    # Groq (secondary provider)
-    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
-    GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b").strip()
-    GROQ_TIMEOUT = int(os.environ.get("GROQ_TIMEOUT", "30"))
 
     # Research sources (optional token raises GitHub's rate limit from 10 to 30 searches/min)
     GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()

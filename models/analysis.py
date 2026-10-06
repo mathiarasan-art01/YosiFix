@@ -9,6 +9,8 @@ class AnalysisStage(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     idea_id = db.Column(db.Integer, db.ForeignKey("ideas.id"), nullable=False, index=True)
+    idea_version_id = db.Column(db.Integer, nullable=True, index=True)
+    analysis_run_id = db.Column(db.Integer, nullable=True, index=True)
     stage_key = db.Column(db.String(40), nullable=False)
     # pending | running | done | stale | error | awaiting_decision
     status = db.Column(db.String(20), default="pending", nullable=False)
@@ -25,13 +27,40 @@ class AnalysisStage(db.Model):
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
 
+class AnalysisRun(db.Model):
+    """Tracks each execution of the analysis pipeline for a project version."""
+
+    __tablename__ = "analysis_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey("ideas.id"), nullable=False, index=True)
+    idea_version_id = db.Column(db.Integer, nullable=True, index=True)
+    status = db.Column(db.String(20), default="running", nullable=False)  # running | completed | failed
+    current_module = db.Column(db.String(40), default="idea_understanding")
+    error_message = db.Column(db.Text, default="")
+    started_at = db.Column(db.DateTime, default=utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "idea_version_id": self.idea_version_id,
+            "status": self.status,
+            "current_module": self.current_module,
+            "error_message": self.error_message,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
 class AnalysisCache(db.Model):
-    """Content-addressed cache: identical stage inputs never trigger a second Groq call."""
+    """Content-addressed cache scoped by project, version, and module."""
 
     __tablename__ = "analysis_cache"
 
     id = db.Column(db.Integer, primary_key=True)
-    cache_key = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    cache_key = db.Column(db.String(255), unique=True, nullable=False, index=True)
     stage_key = db.Column(db.String(40), nullable=False)
     output = db.Column(db.JSON, default=dict)
     engine = db.Column(db.String(80), default="")
