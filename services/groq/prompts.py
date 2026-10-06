@@ -6,7 +6,8 @@ summaries of previous stages. This prevents token explosion, eliminates 413
 'Request too large' errors, and drastically reduces latency and rate limits.
 """
 
-from typing import Dict, Any, Tuple
+from __future__ import annotations
+from typing import Dict, Any, Tuple, Optional, List
 
 
 SYSTEM_ANALYST_ROLE = (
