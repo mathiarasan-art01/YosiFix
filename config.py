@@ -10,20 +10,41 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"), override=False)
 
 IS_VERCEL = bool(os.environ.get("VERCEL"))
+IS_RENDER = bool(os.environ.get("RENDER"))
 _DEFAULT_SECRET = "yosifix-dev-secret-change-in-production"
 
 
 def _database_url():
     url = os.environ.get("DATABASE_URL", "").strip()
     if url:
-        # Heroku/Neon style URLs use postgres:// which SQLAlchemy 2 rejects.
+        # Heroku/Neon/Render style URLs use postgres:// which SQLAlchemy 2 rejects.
         if url.startswith("postgres://"):
             url = "postgresql://" + url[len("postgres://"):]
+        # On serverless (Vercel/Lambda), if psycopg2 isn't available or fails, use pure-python pg8000
+        if (IS_VERCEL or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")) and url.startswith("postgresql://"):
+            try:
+                import psycopg2  # noqa
+            except ImportError:
+                url = "postgresql+pg8000://" + url[len("postgresql://"):]
         return url
-    if IS_VERCEL:
-        # Vercel's filesystem is read-only except /tmp (and /tmp is ephemeral).
+
+    # On Vercel / serverless runtimes, filesystem is read-only except /tmp
+    if IS_VERCEL or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
         return "sqlite:////tmp/yosifix.db"
-    return f"sqlite:///{os.path.join(BASE_DIR, 'instance', 'yosifix.db')}"
+
+    # Local / Render default: test if instance directory can be created and written
+    inst_dir = os.path.join(BASE_DIR, "instance")
+    try:
+        os.makedirs(inst_dir, exist_ok=True)
+        test_file = os.path.join(inst_dir, ".perm_check")
+        with open(test_file, "w") as f:
+            f.write("1")
+        if os.path.exists(test_file):
+            os.remove(test_file)
+        return f"sqlite:///{os.path.join(inst_dir, 'yosifix.db')}"
+    except Exception:
+        # Fallback to /tmp if filesystem is non-writable
+        return "sqlite:////tmp/yosifix.db"
 
 
 class Config:
@@ -37,8 +58,8 @@ class Config:
     REMEMBER_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
-    SESSION_COOKIE_SECURE = IS_VERCEL
-    REMEMBER_COOKIE_SECURE = IS_VERCEL
+    SESSION_COOKIE_SECURE = IS_VERCEL or IS_RENDER
+    REMEMBER_COOKIE_SECURE = IS_VERCEL or IS_RENDER
 
     SQLALCHEMY_DATABASE_URI = _database_url()
     SQLALCHEMY_TRACK_MODIFICATIONS = False

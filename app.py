@@ -54,7 +54,10 @@ def create_app(config_class=Config):
         return {"app_name": "YosiFix", "lang": session.get("lang", "en"), "t": translate}
 
     with app.app_context():
-        db.create_all()
+        try:
+            db.create_all()
+        except Exception as e:
+            app.logger.warning(f"Database initialization warning: {e}")
         try:
             from migrate_db import upgrade_db
             upgrade_db()

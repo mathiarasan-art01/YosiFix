@@ -22,8 +22,7 @@ bp = Blueprint("analysis", __name__, url_prefix="/api")
 
 
 def _get_orchestrator():
-    groq_key = current_app.config.get("GROQ_API_KEY")
-    client = GroqClient(api_key=groq_key)
+    client = GroqClient.from_app(current_app) if hasattr(GroqClient, "from_app") else GroqClient()
     return AnalysisOrchestrator(client=client)
 
 
