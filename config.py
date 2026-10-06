@@ -44,7 +44,12 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
 
-    # Groq (optional). Without a key every stage falls back to its deterministic engine.
+    # OpenAI (primary provider)
+    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+    OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip()
+    OPENAI_TIMEOUT = int(os.environ.get("OPENAI_TIMEOUT", "60"))
+
+    # Groq (secondary provider)
     GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
     GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b").strip()
     GROQ_TIMEOUT = int(os.environ.get("GROQ_TIMEOUT", "30"))

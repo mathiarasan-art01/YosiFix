@@ -6,7 +6,6 @@ FALLBACK_MODELS = [
     "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
     "qwen/qwen3.8-27b",
-    "llama-3.3-70b-versatile",
 ]
 
 REASONING_MODELS = ("openai/gpt-oss",)

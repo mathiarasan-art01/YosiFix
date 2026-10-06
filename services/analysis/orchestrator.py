@@ -64,7 +64,7 @@ class AnalysisOrchestrator:
         ctx = AnalysisContext.from_db(idea)
         raw_text = idea.raw_text
 
-        ctx.engine_used = "groq" if self.client.is_configured() else "rule-based"
+        ctx.engine_used = self.client.active_engine() if hasattr(self.client, "active_engine") else ("groq" if self.client.is_configured() else "rule-based")
 
         # Stage 1: Idea Understanding
         idea_res = self.client.analyze_idea(raw_text)

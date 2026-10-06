@@ -1,20 +1,19 @@
 # services/groq/client.py
-"""Groq API client wrapper for YosiFix.
+"""Unified, provider-independent LLM client with multi-provider cascade and offline fallback.
 
-Reads configuration from environment variables or Flask configuration:
-- GROQ_API_KEY: Groq API key (optional; if missing, falls back to deterministic rule engine).
-- GROQ_MODEL: Groq model name (defaults to 'openai/gpt-oss-20b' with fallback hierarchy).
-- GROQ_TIMEOUT: request timeout in seconds (defaults to 30).
+Provider Priority:
+1. Primary: OpenAI (if OPENAI_API_KEY is configured and has credits).
+2. Secondary: Groq (if GROQ_API_KEY is configured).
+3. Tertiary: Deterministic Rule Engine (offline resilient fallback).
 
-Provides high-level typed methods for every stage of the YosiFix analysis pipeline,
-ensuring that all responses are parsed and validated into their corresponding Pydantic schemas.
+Every pipeline stage returns validated Pydantic schema instances.
 """
 
 import os
 import json
 import time
 import logging
-from typing import Any, Type, Optional, Dict
+from typing import Any, Type, Optional, Dict, List
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -42,13 +41,14 @@ from services.groq.schemas import (
     MasterBlueprintSchema,
 )
 
-logger = logging.getLogger("yosifix.groq")
-_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+logger = logging.getLogger("yosifix.llm")
+_GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 
 
-class GroqService:
-    """Robust Groq client with schema enforcement and seamless offline fallback."""
+class LLMService:
+    """Robust provider-independent LLM client with schema enforcement and seamless cascade."""
 
+    _openai_cooldown_until: float = 0.0
     _circuit_cooldown_until: float = 0.0
     _dead_models: set = set()
     _last_error: str = ""
@@ -58,7 +58,24 @@ class GroqService:
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         timeout: Optional[int] = None,
+        openai_api_key: Optional[str] = None,
+        openai_model: Optional[str] = None,
+        openai_timeout: Optional[int] = None,
     ):
+        # OpenAI settings
+        self.openai_api_key = (openai_api_key if openai_api_key is not None else os.getenv("OPENAI_API_KEY", "")).strip()
+        self.openai_model = (openai_model or os.getenv("OPENAI_MODEL") or "gpt-4o-mini").strip()
+        self.openai_timeout = openai_timeout or int(os.getenv("OPENAI_TIMEOUT", "60"))
+        self._openai_sdk = None
+
+        if self.openai_api_key:
+            try:
+                from openai import OpenAI
+                self._openai_sdk = OpenAI(api_key=self.openai_api_key, timeout=self.openai_timeout)
+            except Exception:
+                self._openai_sdk = None
+
+        # Groq settings
         self.api_key = (api_key if api_key is not None else os.getenv("GROQ_API_KEY", "")).strip()
         self.model = (model or os.getenv("GROQ_MODEL") or DEFAULT_MODEL).strip()
         self.timeout = timeout or int(os.getenv("GROQ_TIMEOUT", str(DEFAULT_TIMEOUT)))
@@ -75,43 +92,50 @@ class GroqService:
     def from_app(cls, app=None):
         from flask import current_app
         cfg = (app or current_app).config
-        return cls(cfg.get("GROQ_API_KEY", ""), cfg.get("GROQ_MODEL"), cfg.get("GROQ_TIMEOUT"))
-
-    def is_configured(self) -> bool:
-        return bool(
-            self.api_key
-            and self.api_key.strip()
-            and time.time() >= GroqService._circuit_cooldown_until
+        return cls(
+            api_key=cfg.get("GROQ_API_KEY", ""),
+            model=cfg.get("GROQ_MODEL"),
+            timeout=cfg.get("GROQ_TIMEOUT"),
+            openai_api_key=cfg.get("OPENAI_API_KEY", ""),
+            openai_model=cfg.get("OPENAI_MODEL"),
+            openai_timeout=cfg.get("OPENAI_TIMEOUT"),
         )
 
+    def is_configured(self) -> bool:
+        has_openai = bool(self.openai_api_key and time.time() >= LLMService._openai_cooldown_until)
+        has_groq = bool(self.api_key and time.time() >= LLMService._circuit_cooldown_until)
+        return has_openai or has_groq
+
     def configured(self) -> bool:
-        return bool(self.api_key and self.api_key.strip())
+        return bool((self.openai_api_key and self.openai_api_key.strip()) or (self.api_key and self.api_key.strip()))
 
     def available(self) -> bool:
         return self.is_configured()
 
-    def _candidate_models(self):
+    def active_engine(self) -> str:
+        if self.openai_api_key and time.time() >= LLMService._openai_cooldown_until:
+            return "openai"
+        if self.api_key and time.time() >= LLMService._circuit_cooldown_until:
+            return "groq"
+        return "rule-based"
+
+    def _candidate_groq_models(self) -> List[str]:
         chain = [self.model] + [m for m in FALLBACK_MODELS if m != self.model]
-        candidates = [m for m in chain if m not in GroqService._dead_models]
+        candidates = [m for m in chain if m not in LLMService._dead_models and "llama-3.3" not in m]
         return candidates or [DEFAULT_MODEL]
 
-    def call(
+    def _call_openai(
         self,
         system_prompt: str,
         user_prompt: str,
         response_model: Type[BaseModel],
-        max_retries: int = 1,
     ) -> BaseModel:
-        """Call Groq chat completion API and parse response into response_model.
-        Raises RuntimeError if not configured or if all retries fail.
-        """
-        if not self.is_configured():
-            raise LLMError("GROQ_API_KEY is not configured or in cooldown")
+        if not self._openai_sdk:
+            from openai import OpenAI
+            self._openai_sdk = OpenAI(api_key=self.openai_api_key, timeout=self.openai_timeout)
 
         schema_json = ""
-        if hasattr(response_model, "get_json_schema"):
-            schema_json = json.dumps(response_model.get_json_schema(), separators=(",", ":"))
-        elif hasattr(response_model, "model_json_schema"):
+        if hasattr(response_model, "model_json_schema"):
             schema_json = json.dumps(response_model.model_json_schema(), separators=(",", ":"))
         elif hasattr(response_model, "schema"):
             schema_json = json.dumps(response_model.schema(), separators=(",", ":"))
@@ -121,75 +145,182 @@ class GroqService:
             f"IMPORTANT: Respond strictly with a valid JSON object matching this schema:\n"
             f"```json\n{schema_json}\n```"
         )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": enriched_user_prompt},
+        ]
 
+        chat_completion = self._openai_sdk.chat.completions.create(
+            model=self.openai_model,
+            messages=messages,
+            temperature=0.2,
+            response_format={"type": "json_object"},
+        )
+        raw_content = chat_completion.choices[0].message.content or ""
+        parsed_dict = parse_json_response(raw_content)
+
+        if hasattr(response_model, "model_validate"):
+            return response_model.model_validate(parsed_dict)
+        return response_model.parse_obj(parsed_dict)
+
+    def _call_groq(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_model: Type[BaseModel],
+    ) -> BaseModel:
+        schema_json = ""
+        if hasattr(response_model, "model_json_schema"):
+            schema_json = json.dumps(response_model.model_json_schema(), separators=(",", ":"))
+        elif hasattr(response_model, "schema"):
+            schema_json = json.dumps(response_model.schema(), separators=(",", ":"))
+
+        enriched_user_prompt = (
+            f"{user_prompt}\n\n"
+            f"IMPORTANT: Respond strictly with a valid JSON object matching this schema:\n"
+            f"```json\n{schema_json}\n```"
+        )
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": enriched_user_prompt},
         ]
 
         last_error = None
-        for model in self._candidate_models():
-            for attempt in range(max_retries + 1):
+        for model in self._candidate_groq_models():
+            try:
+                raw_content = ""
+                if self._groq_sdk:
+                    kwargs = dict(
+                        model=model,
+                        messages=messages,
+                        temperature=0.2,
+                        response_format={"type": "json_object"},
+                    )
+                    if any(model.startswith(r) for r in REASONING_MODELS):
+                        kwargs["reasoning_effort"] = "low"
+                    try:
+                        chat_completion = self._groq_sdk.chat.completions.create(**kwargs)
+                    except TypeError:
+                        kwargs.pop("reasoning_effort", None)
+                        chat_completion = self._groq_sdk.chat.completions.create(**kwargs)
+                    raw_content = chat_completion.choices[0].message.content or ""
+                else:
+                    headers = {
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    }
+                    payload = {
+                        "model": model,
+                        "messages": messages,
+                        "temperature": 0.2,
+                        "response_format": {"type": "json_object"},
+                    }
+                    with httpx.Client(timeout=self.timeout) as client:
+                        resp = client.post(_GROQ_ENDPOINT, headers=headers, json=payload)
+                        resp.raise_for_status()
+                        data = resp.json()
+                        raw_content = data["choices"][0]["message"]["content"]
+
+                parsed_dict = parse_json_response(raw_content)
+                if hasattr(response_model, "model_validate"):
+                    return response_model.model_validate(parsed_dict)
+                return response_model.parse_obj(parsed_dict)
+
+            except Exception as exc:
+                last_error = exc
+                err_msg = str(exc).lower()
+                if "404" in err_msg or "model_not_found" in err_msg or "does not exist" in err_msg:
+                    logger.warning(f"Groq model {model} unavailable, removing from candidates: {exc}")
+                    LLMService._dead_models.add(model)
+                    continue
+                elif "413" in err_msg or "request too large" in err_msg:
+                    logger.warning(f"Groq request too large on {model}: {exc}. Triggering circuit cooldown.")
+                    LLMService._circuit_cooldown_until = time.time() + 30.0
+                    break
+                elif "429" in err_msg or "rate_limit" in err_msg:
+                    logger.warning(f"Groq rate limit on {model}: {exc}. Triggering circuit cooldown.")
+                    LLMService._circuit_cooldown_until = time.time() + 25.0
+                    break
+                else:
+                    logger.warning(f"Groq model {model} error: {exc}")
+
+        raise LLMError(f"Groq request failed: {last_error}")
+
+    def call(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_model: Type[BaseModel],
+        max_retries: int = 1,
+    ) -> BaseModel:
+        """Call primary provider (OpenAI), then secondary (Groq), then cascade."""
+        # 1. Primary: OpenAI
+        if self.openai_api_key and time.time() >= LLMService._openai_cooldown_until:
+            try:
+                return self._call_openai(system_prompt, user_prompt, response_model)
+            except Exception as exc:
+                err_str = str(exc).lower()
+                logger.warning(f"OpenAI call failed ({exc}). Cascading to secondary provider...")
+                if "quota" in err_str or "billing" in err_str or "credit" in err_str:
+                    LLMService._openai_cooldown_until = time.time() + 300.0
+                elif "429" in err_str or "rate limit" in err_str:
+                    LLMService._openai_cooldown_until = time.time() + 30.0
+                else:
+                    LLMService._openai_cooldown_until = time.time() + 15.0
+
+        # 2. Secondary: Groq
+        if self.api_key and time.time() >= LLMService._circuit_cooldown_until:
+            try:
+                return self._call_groq(system_prompt, user_prompt, response_model)
+            except Exception as exc:
+                logger.warning(f"Groq call failed ({exc}). Cascading to deterministic fallback...")
+                LLMService._circuit_cooldown_until = time.time() + 20.0
+
+        # 3. Raise error to trigger deterministic fallback
+        raise LLMError("All online LLM providers currently unavailable")
+
+    def _chat_completion(self, messages: list, temperature: float = 0.3) -> str:
+        """Chat completion for the interactive assistant."""
+        # 1. Primary: OpenAI
+        if self.openai_api_key and time.time() >= LLMService._openai_cooldown_until:
+            try:
+                if not self._openai_sdk:
+                    from openai import OpenAI
+                    self._openai_sdk = OpenAI(api_key=self.openai_api_key, timeout=self.openai_timeout)
+                resp = self._openai_sdk.chat.completions.create(
+                    model=self.openai_model,
+                    messages=messages,
+                    temperature=temperature,
+                )
+                return resp.choices[0].message.content or ""
+            except Exception as exc:
+                err_str = str(exc).lower()
+                logger.warning(f"OpenAI chat failed ({exc}). Cascading to secondary provider...")
+                if "quota" in err_str or "billing" in err_str or "credit" in err_str:
+                    LLMService._openai_cooldown_until = time.time() + 300.0
+                else:
+                    LLMService._openai_cooldown_until = time.time() + 20.0
+
+        # 2. Secondary: Groq
+        if self.api_key and time.time() >= LLMService._circuit_cooldown_until:
+            for model in self._candidate_groq_models():
                 try:
-                    raw_content = ""
                     if self._groq_sdk:
-                        kwargs = dict(
+                        resp = self._groq_sdk.chat.completions.create(
                             model=model,
                             messages=messages,
-                            temperature=0.2,
-                            response_format={"type": "json_object"},
+                            temperature=temperature,
                         )
-                        if any(model.startswith(r) for r in REASONING_MODELS):
-                            kwargs["reasoning_effort"] = "low"
-                        try:
-                            chat_completion = self._groq_sdk.chat.completions.create(**kwargs)
-                        except TypeError:
-                            kwargs.pop("reasoning_effort", None)
-                            chat_completion = self._groq_sdk.chat.completions.create(**kwargs)
-                        raw_content = chat_completion.choices[0].message.content or ""
-                    else:
-                        headers = {
-                            "Authorization": f"Bearer {self.api_key}",
-                            "Content-Type": "application/json",
-                        }
-                        payload = {
-                            "model": model,
-                            "messages": messages,
-                            "temperature": 0.2,
-                            "response_format": {"type": "json_object"},
-                        }
-                        with httpx.Client(timeout=self.timeout) as client:
-                            resp = client.post(_ENDPOINT, headers=headers, json=payload)
-                            resp.raise_for_status()
-                            data = resp.json()
-                            raw_content = data["choices"][0]["message"]["content"]
+                        return resp.choices[0].message.content or ""
+                except Exception as me:
+                    err_m = str(me).lower()
+                    if "404" in err_m or "model_not_found" in err_m:
+                        LLMService._dead_models.add(model)
+                        continue
+                    LLMService._circuit_cooldown_until = time.time() + 20.0
+                    break
 
-                    parsed_dict = parse_json_response(raw_content)
-
-                    # Validate against Pydantic schema
-                    if hasattr(response_model, "model_validate"):
-                        return response_model.model_validate(parsed_dict)
-                    return response_model.parse_obj(parsed_dict)
-
-                except Exception as exc:
-                    last_error = exc
-                    err_msg = str(exc).lower()
-                    if "404" in err_msg or "model_not_found" in err_msg or "does not exist" in err_msg:
-                        logger.warning(f"Model {model} unavailable, moving to next model: {exc}")
-                        GroqService._dead_models.add(model)
-                        break
-                    elif "401" in err_msg or "invalid api key" in err_msg:
-                        GroqService._circuit_cooldown_until = time.time() + 300
-                        logger.error(f"Groq API key invalid: {exc}")
-                        raise LLMError("Invalid GROQ_API_KEY") from exc
-                    elif attempt < max_retries:
-                        logger.warning(f"Groq call attempt {attempt+1} failed: {exc}. Retrying...")
-                        time.sleep(1.0)
-                    else:
-                        logger.warning(f"Groq model {model} failed: {exc}")
-
-        GroqService._circuit_cooldown_until = time.time() + 15.0
-        raise LLMError(f"Groq request failed: {last_error}")
+        raise LLMError("Chat completion unavailable across all providers")
 
     # -----------------------------------------------------------------------
     # Typed pipeline stage methods with automated fallback
@@ -258,13 +389,13 @@ class GroqService:
                 logger.warning(f"Fallback to rule engine for generate_mutations: {exc}")
         return fallback.fallback_mutation_engine(context)
 
-    def reality_check(self, context: Dict[str, Any]) -> RealityCheckSchema:
+    def check_reality(self, context: Dict[str, Any]) -> RealityCheckSchema:
         system_p, user_p = prompts.reality_check_prompt(context)
         if self.is_configured():
             try:
                 return self.call(system_p, user_p, RealityCheckSchema)
             except Exception as exc:
-                logger.warning(f"Fallback to rule engine for reality_check: {exc}")
+                logger.warning(f"Fallback to rule engine for check_reality: {exc}")
         return fallback.fallback_reality_check(context)
 
     def simulate_failures(self, context: Dict[str, Any]) -> FailureSimulationSchema:
@@ -276,31 +407,31 @@ class GroqService:
                 logger.warning(f"Fallback to rule engine for simulate_failures: {exc}")
         return fallback.fallback_failure_simulation(context)
 
-    def map_impact(self, context: Dict[str, Any]) -> ImpactAndSDGSchema:
+    def assess_impact(self, context: Dict[str, Any]) -> ImpactAndSDGSchema:
         system_p, user_p = prompts.impact_and_sdg_prompt(context)
         if self.is_configured():
             try:
                 return self.call(system_p, user_p, ImpactAndSDGSchema)
             except Exception as exc:
-                logger.warning(f"Fallback to rule engine for map_impact: {exc}")
+                logger.warning(f"Fallback to rule engine for assess_impact: {exc}")
         return fallback.fallback_impact_and_sdg(context)
 
-    def recommend_technology(self, context: Dict[str, Any]) -> TechnologyDecisionSchema:
+    def decide_technology(self, context: Dict[str, Any]) -> TechnologyDecisionSchema:
         system_p, user_p = prompts.technology_decision_prompt(context)
         if self.is_configured():
             try:
                 return self.call(system_p, user_p, TechnologyDecisionSchema)
             except Exception as exc:
-                logger.warning(f"Fallback to rule engine for recommend_technology: {exc}")
+                logger.warning(f"Fallback to rule engine for decide_technology: {exc}")
         return fallback.fallback_technology_decision(context)
 
-    def generate_architecture(self, context: Dict[str, Any]) -> ArchitectureSchema:
+    def design_architecture(self, context: Dict[str, Any]) -> ArchitectureSchema:
         system_p, user_p = prompts.architecture_prompt(context)
         if self.is_configured():
             try:
                 return self.call(system_p, user_p, ArchitectureSchema)
             except Exception as exc:
-                logger.warning(f"Fallback to rule engine for generate_architecture: {exc}")
+                logger.warning(f"Fallback to rule engine for design_architecture: {exc}")
         return fallback.fallback_architecture(context)
 
     def generate_roadmap(self, context: Dict[str, Any]) -> RoadmapSchema:
@@ -348,6 +479,14 @@ class GroqService:
                 logger.warning(f"Fallback to rule engine for generate_blueprint: {exc}")
         return fallback.fallback_master_blueprint(context)
 
+    # Aliases for 100% interoperability with orchestrator and service variants
+    reality_check = check_reality
+    map_impact = assess_impact
+    recommend_technology = decide_technology
+    generate_architecture = design_architecture
+    plan_roadmap = generate_roadmap
 
-# Alias GroqClient to GroqService for seamless compatibility
-GroqClient = GroqService
+
+# Aliases for 100% backwards compatibility across imports
+GroqService = LLMService
+GroqClient = LLMService
